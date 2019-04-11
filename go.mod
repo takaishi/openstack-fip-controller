@@ -19,6 +19,7 @@ require (
 	github.com/google/gofuzz v1.0.0
 	github.com/google/uuid v1.1.1
 	github.com/googleapis/gnostic v0.2.0
+	github.com/gophercloud/gophercloud v0.0.0-20190410012400-2c55d17f707c
 	github.com/gregjones/httpcache v0.0.0-20190212212710-3befbb6ad0cc
 	github.com/hashicorp/golang-lru v0.5.1
 	github.com/hpcloud/tail v1.0.0

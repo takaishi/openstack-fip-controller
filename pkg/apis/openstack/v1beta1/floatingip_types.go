@@ -27,12 +27,15 @@ import (
 type FloatingIPSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	NodeSelector map[string]string `json:"nodeSelector"`
+	Network      string            `json:"network"`
 }
 
 // FloatingIPStatus defines the observed state of FloatingIP
 type FloatingIPStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	ID string
 }
 
 // +genclient
