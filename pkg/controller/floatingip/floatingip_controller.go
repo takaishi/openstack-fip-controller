@@ -91,6 +91,22 @@ type ReconcileFloatingIP struct {
 	scheme *runtime.Scheme
 }
 
+func (r *ReconcileFloatingIP) deleteExternalDependency(instance *openstackv1beta1.FloatingIP) error {
+	log.Info("Info", "deleting the external dependencies", instance.Status.ID)
+
+	osClient, err := openstack.NewClient()
+	if err != nil {
+		return err
+	}
+
+	err = osClient.DeleteFIP(instance.Status.ID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Reconcile reads that state of the cluster for a FloatingIP object and makes changes based on the state read
 // and what is in the FloatingIP.Spec
 // TODO(user): Modify this Reconcile function to implement your Controller logic.  The scaffolding writes
@@ -112,6 +128,30 @@ func (r *ReconcileFloatingIP) Reconcile(request reconcile.Request) (reconcile.Re
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
+	}
+
+	finalizerName := "finalizer.securitygroups.openstack.repl.info"
+	if instance.ObjectMeta.DeletionTimestamp.IsZero() {
+		log.Info("Debug: deletion timestamp is zero")
+		if !containsString(instance.ObjectMeta.Finalizers, finalizerName) {
+			instance.ObjectMeta.Finalizers = append(instance.ObjectMeta.Finalizers, finalizerName)
+			if err := r.Update(context.Background(), instance); err != nil {
+				log.Info("Debug", "err", err.Error())
+				return reconcile.Result{}, err
+			}
+		}
+	} else {
+		if containsString(instance.ObjectMeta.Finalizers, finalizerName) {
+			if err := r.deleteExternalDependency(instance); err != nil {
+				return reconcile.Result{}, err
+			}
+
+			instance.ObjectMeta.Finalizers = removeString(instance.ObjectMeta.Finalizers, finalizerName)
+			if err := r.Update(context.Background(), instance); err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+		return reconcile.Result{}, nil
 	}
 
 	osClient, err := openstack.NewClient()
@@ -152,7 +192,11 @@ func (r *ReconcileFloatingIP) Reconcile(request reconcile.Request) (reconcile.Re
 								return reconcile.Result{}, err2
 							}
 							log.Info("Info: Success to create Floating IP", "network", instance.Spec.Network, "fixed_ip", fixedIP, "floating_ip", fip.FloatingIP)
-							instance.Status.ID =fip.ID
+							instance.Status.ID = fip.ID
+							if err := r.Update(context.Background(), instance); err != nil {
+								log.Info("Debug", "err", err.Error())
+								return reconcile.Result{}, err
+							}
 							return reconcile.Result{}, nil
 						default:
 							log.Info("Debug", "err", err.Error())
@@ -220,4 +264,10 @@ func removeString(slice []string, s string) (result []string) {
 		result = append(result, item)
 	}
 	return
+}
+
+func hasKey(dict map[string]string, key string) bool {
+	_, ok := dict[key]
+
+	return ok
 }
