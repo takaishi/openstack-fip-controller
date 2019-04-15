@@ -140,15 +140,10 @@ func (r *ReconcileFloatingIP) Reconcile(request reconcile.Request) (reconcile.Re
 			return reconcile.Result{}, err
 		}
 	} else {
-		if containsString(instance.ObjectMeta.Finalizers, finalizerName) {
-			if err := r.deleteExternalDependency(instance); err != nil {
-				return reconcile.Result{}, err
-			}
+		err := r.runFinalizer(instance)
+		if err != nil {
+			return reconcile.Result{}, err
 
-			instance.ObjectMeta.Finalizers = removeString(instance.ObjectMeta.Finalizers, finalizerName)
-			if err := r.Update(context.Background(), instance); err != nil {
-				return reconcile.Result{}, err
-			}
 		}
 		return reconcile.Result{}, nil
 	}
@@ -236,6 +231,21 @@ func (r *ReconcileFloatingIP) setFinalizer(fip *openstackv1beta1.FloatingIP) err
 		fip.ObjectMeta.Finalizers = append(fip.ObjectMeta.Finalizers, finalizerName)
 		if err := r.Update(context.Background(), fip); err != nil {
 			log.Info("Debug", "err", err.Error())
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *ReconcileFloatingIP) runFinalizer(fip *openstackv1beta1.FloatingIP) error {
+	if containsString(fip.ObjectMeta.Finalizers, finalizerName) {
+		if err := r.deleteExternalDependency(fip); err != nil {
+			return err
+		}
+
+		fip.ObjectMeta.Finalizers = removeString(fip.ObjectMeta.Finalizers, finalizerName)
+		if err := r.Update(context.Background(), fip); err != nil {
 			return err
 		}
 	}
