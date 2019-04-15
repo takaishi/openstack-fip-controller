@@ -40,6 +40,7 @@ import (
 )
 
 var log = logf.Log.WithName("controller")
+var finalizerName = "finalizer.securitygroups.openstack.repl.info"
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -132,15 +133,11 @@ func (r *ReconcileFloatingIP) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, err
 	}
 
-	finalizerName := "finalizer.securitygroups.openstack.repl.info"
 	if instance.ObjectMeta.DeletionTimestamp.IsZero() {
 		log.Info("Debug: deletion timestamp is zero")
-		if !containsString(instance.ObjectMeta.Finalizers, finalizerName) {
-			instance.ObjectMeta.Finalizers = append(instance.ObjectMeta.Finalizers, finalizerName)
-			if err := r.Update(context.Background(), instance); err != nil {
-				log.Info("Debug", "err", err.Error())
-				return reconcile.Result{}, err
-			}
+		err := r.setFinalizer(instance)
+		if err != nil {
+			return reconcile.Result{}, err
 		}
 	} else {
 		if containsString(instance.ObjectMeta.Finalizers, finalizerName) {
@@ -232,6 +229,18 @@ func getFixedIPByServer(server *servers.Server) []string {
 	}
 
 	return fixedIPs
+}
+
+func (r *ReconcileFloatingIP) setFinalizer(fip *openstackv1beta1.FloatingIP) error {
+	if !containsString(fip.ObjectMeta.Finalizers, finalizerName) {
+		fip.ObjectMeta.Finalizers = append(fip.ObjectMeta.Finalizers, finalizerName)
+		if err := r.Update(context.Background(), fip); err != nil {
+			log.Info("Debug", "err", err.Error())
+			return err
+		}
+	}
+
+	return nil
 }
 
 func kubeClient() (*kubernetes.Clientset, error) {
