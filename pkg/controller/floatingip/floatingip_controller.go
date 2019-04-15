@@ -19,23 +19,23 @@ package floatingip
 import (
 	"context"
 	"fmt"
-	"github.com/takaishi/openstack-fip-controller/pkg/openstack"
-	"k8s.io/client-go/kubernetes"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
-	"strings"
-
 	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/pkg/apis/openstack/v1beta1"
+	"github.com/takaishi/openstack-fip-controller/pkg/openstack"
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	"strings"
 )
 
 var log = logf.Log.WithName("controller")
@@ -88,7 +88,8 @@ var _ reconcile.Reconciler = &ReconcileFloatingIP{}
 // ReconcileFloatingIP reconciles a FloatingIP object
 type ReconcileFloatingIP struct {
 	client.Client
-	scheme *runtime.Scheme
+	scheme   *runtime.Scheme
+	osClient *openstack.OpenStackClient
 }
 
 func (r *ReconcileFloatingIP) deleteExternalDependency(instance *openstackv1beta1.FloatingIP) error {
@@ -154,7 +155,7 @@ func (r *ReconcileFloatingIP) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, nil
 	}
 
-	osClient, err := openstack.NewClient()
+	r.osClient, err = openstack.NewClient()
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -171,47 +172,54 @@ func (r *ReconcileFloatingIP) Reconcile(request reconcile.Request) (reconcile.Re
 	}
 
 	for _, node := range nodes.Items {
-		id := strings.ToLower(node.Status.NodeInfo.SystemUUID)
-		server, err := osClient.GetServer(id)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		fmt.Printf("%+v\n", server.Addresses)
-		for _, v := range server.Addresses {
-			fmt.Printf("%+v\n", v)
-			for _, addr := range v.([]interface{}) {
-				if addr.(map[string]interface{})["OS-EXT-IPS:type"].(string) == "fixed" {
-					fixedIP := addr.(map[string]interface{})["addr"].(string)
-					fip, err := osClient.FindFIP(instance.Spec.Network, fixedIP)
-					if err != nil {
-						switch err := err.(type) {
-						case *openstack.ErrFloatingIPNotFound:
-							log.Info("Info: Creating Floating IP...", "network", instance.Spec.Network, "fixed_ip", fixedIP)
-							fip, err2 := osClient.CreateFIP(instance.Spec.Network, *server)
-							if err2 != nil {
-								return reconcile.Result{}, err2
-							}
-							log.Info("Info: Success to create Floating IP", "network", instance.Spec.Network, "fixed_ip", fixedIP, "floating_ip", fip.FloatingIP)
-							instance.Status.ID = fip.ID
-							if err := r.Update(context.Background(), instance); err != nil {
-								log.Info("Debug", "err", err.Error())
-								return reconcile.Result{}, err
-							}
-							return reconcile.Result{}, nil
-						default:
-							log.Info("Debug", "err", err.Error())
-							return reconcile.Result{}, err
-						}
-					}
-					log.Info("Info: FloatingIP exists", "network", instance.Spec.Network, "fixed_ip", fixedIP, "floating_ip", fip.FloatingIP)
-				}
-			}
-		}
+		r.setFIPtoNode(node, instance)
 	}
 
 	if err := r.Update(context.Background(), instance); err != nil {
 		log.Info("Debug", "err", err.Error())
 		return reconcile.Result{}, err
+	}
+
+	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileFloatingIP) setFIPtoNode(node v1.Node, instance *openstackv1beta1.FloatingIP) (reconcile.Result, error) {
+	id := strings.ToLower(node.Status.NodeInfo.SystemUUID)
+	server, err := r.osClient.GetServer(id)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	fmt.Printf("%+v\n", server.Addresses)
+	for _, v := range server.Addresses {
+		fmt.Printf("%+v\n", v)
+		for _, addr := range v.([]interface{}) {
+			if addr.(map[string]interface{})["OS-EXT-IPS:type"].(string) == "fixed" {
+				fixedIP := addr.(map[string]interface{})["addr"].(string)
+				fip, err := r.osClient.FindFIP(instance.Spec.Network, fixedIP)
+				if err != nil {
+					switch err := err.(type) {
+					case *openstack.ErrFloatingIPNotFound:
+						log.Info("Info: Creating Floating IP...", "network", instance.Spec.Network, "fixed_ip", fixedIP)
+						fip, err2 := r.osClient.CreateFIP(instance.Spec.Network, *server)
+						if err2 != nil {
+							return reconcile.Result{}, err2
+						}
+						log.Info("Info: Success to create Floating IP", "network", instance.Spec.Network, "fixed_ip", fixedIP, "floating_ip", fip.FloatingIP)
+						instance.Status.ID = fip.ID
+						if err := r.Update(context.Background(), instance); err != nil {
+							log.Info("Debug", "err", err.Error())
+							return reconcile.Result{}, err
+						}
+						return reconcile.Result{}, nil
+					default:
+						log.Info("Debug", "err", err.Error())
+						return reconcile.Result{}, err
+					}
+				}
+				log.Info("Info: FloatingIP exists", "network", instance.Spec.Network, "fixed_ip", fixedIP, "floating_ip", fip.FloatingIP)
+			}
+		}
 	}
 
 	return reconcile.Result{}, nil
@@ -265,7 +273,6 @@ func removeString(slice []string, s string) (result []string) {
 	}
 	return
 }
-
 func hasKey(dict map[string]string, key string) bool {
 	_, ok := dict[key]
 
