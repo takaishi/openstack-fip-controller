@@ -134,9 +134,10 @@ func (client *OpenStackClient) GetServer(id string) (*servers.Server, error) {
 	if res.Err != nil {
 		return nil, res.Err
 	}
+
 	server, err := res.Extract()
-	if res.Err != nil {
-		return nil, res.Err
+	if err != nil {
+		return nil, err
 	}
 
 	return server, nil
