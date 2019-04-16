@@ -27,6 +27,16 @@ spec:
         metadata:
           type: object
         spec:
+          properties:
+            network:
+              type: string
+            nodeSelector:
+              description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                Important: Run "make" to regenerate code after modifying this file'
+              type: object
+          required:
+          - nodeSelector
+          - network
           type: object
         status:
           type: object
