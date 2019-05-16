@@ -130,17 +130,7 @@ func (client *OpenStackClient) GetServer(id string) (*servers.Server, error) {
 		return nil, err
 	}
 
-	res := servers.Get(computeClient, id)
-	if res.Err != nil {
-		return nil, res.Err
-	}
-
-	server, err := res.Extract()
-	if err != nil {
-		return nil, err
-	}
-
-	return server, nil
+	return servers.Get(computeClient, id).Extract()
 }
 
 func (client *OpenStackClient) GetNetworkByName(name string) (networks.Network, error) {

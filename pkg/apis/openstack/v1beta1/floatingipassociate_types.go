@@ -28,7 +28,7 @@ type FloatingIPAssociateSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	FloatingIP string `json:"floatingIP"`
-	PortID     string `json:"portID"`
+	Node       string `json:"node"`
 }
 
 // FloatingIPAssociateStatus defines the observed state of FloatingIPAssociate

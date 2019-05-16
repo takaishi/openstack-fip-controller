@@ -23,16 +23,20 @@ import (
 	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/pkg/apis/openstack/v1beta1"
 	"github.com/takaishi/openstack-fip-controller/pkg/openstack"
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/api/core/v1"
 	errors_ "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	"strings"
 )
 
 var log = logf.Log.WithName("controller")
@@ -111,6 +115,10 @@ func (r *ReconcileFloatingIPAssociate) deleteExternalDependency(instance *openst
 	if err != nil {
 		return err
 	}
+	fip.Status.PortID = ""
+	if err := r.Status().Update(ctx, &fip); err != nil {
+		return err
+	}
 	log.Info("Deleted Floating IP", "ID", instance.Status.FloatingIP, "FloatingIP", instance.Status.FloatingIP)
 
 	return nil
@@ -150,6 +158,35 @@ func (r *ReconcileFloatingIPAssociate) Reconcile(request reconcile.Request) (rec
 		return r.runFinalizer(&instance, request)
 	}
 
+	node := v1.Node{}
+	nn := types.NamespacedName{Namespace: "", Name: instance.Spec.Node}
+	if err := r.Get(ctx, nn, &node); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	fmt.Printf("node.Status.Addresses: %+v\n", node.Status.Addresses)
+	var portID string
+	for _, iface := range node.Status.Addresses {
+		if iface.Type == v1.NodeInternalIP {
+			r.osClient, err = openstack.NewClient()
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			fmt.Printf("server id: %s\n", node.Status.NodeInfo.SystemUUID)
+			server, err := r.osClient.GetServer(strings.ToLower(node.Status.NodeInfo.SystemUUID))
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			fmt.Printf("server name: %+v\n", server.Name)
+			port, err := r.osClient.FindPortByServer(*server)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			fmt.Printf("port: %+v\n", port)
+			portID = port.ID
+		}
+	}
+
 	var fip openstackv1beta1.FloatingIP
 	if instance.Status.FloatingIP == "" {
 		nn := types.NamespacedName{Namespace: request.Namespace, Name: instance.Spec.FloatingIP}
@@ -157,7 +194,7 @@ func (r *ReconcileFloatingIPAssociate) Reconcile(request reconcile.Request) (rec
 			return reconcile.Result{}, err
 		}
 		if fip.Status.PortID != "" {
-			if fip.Status.PortID != instance.Spec.PortID {
+			if fip.Status.PortID != portID {
 				log.Info("FloatingIP already attached another port", "floatingIP", fip.Status.FloatingIP, "portID", fip.Status.PortID)
 				return reconcile.Result{}, errors.Errorf("FloatingIP %s already attached port %s", fip.Status.FloatingIP, fip.Status.PortID)
 			}
@@ -167,12 +204,12 @@ func (r *ReconcileFloatingIPAssociate) Reconcile(request reconcile.Request) (rec
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			err := r.osClient.AttachFIP(fip.Status.ID, instance.Spec.PortID)
+			err := r.osClient.AttachFIP(fip.Status.ID, portID)
 			if err != nil {
 				log.Info("failed to attach Floating IP")
 				return reconcile.Result{}, err
 			}
-			fip.Status.PortID = instance.Spec.PortID
+			fip.Status.PortID = portID
 			if err := r.Status().Update(ctx, &fip); err != nil {
 				return reconcile.Result{}, err
 			}
@@ -225,4 +262,20 @@ func removeString(slice []string, s string) (result []string) {
 		result = append(result, item)
 	}
 	return
+}
+
+func kubeClient() (*kubernetes.Clientset, error) {
+	cfg, err := config.GetConfig()
+	if err != nil {
+		log.Info("Error", "Failed to get config", err.Error())
+		return nil, err
+	}
+
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		log.Info("Error", "Failed to NewForConfig", err.Error())
+		return nil, err
+	}
+
+	return clientset, nil
 }

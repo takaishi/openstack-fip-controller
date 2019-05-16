@@ -34,11 +34,11 @@ spec:
               description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                 Important: Run "make" to regenerate code after modifying this file'
               type: string
-            portID:
+            node:
               type: string
           required:
           - floatingIP
-          - portID
+          - node
           type: object
         status:
           properties:
