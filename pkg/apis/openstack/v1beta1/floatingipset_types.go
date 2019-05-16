@@ -27,6 +27,7 @@ import (
 type FloatingIPSetSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	NodeSelector map[string]string `json:"nodeSelector"`
 }
 
 // FloatingIPSetStatus defines the observed state of FloatingIPSet
