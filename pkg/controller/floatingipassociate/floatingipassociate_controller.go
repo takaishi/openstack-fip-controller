@@ -18,18 +18,16 @@ package floatingipassociate
 
 import (
 	"context"
-	"reflect"
-
+	"fmt"
+	"github.com/pkg/errors"
 	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/pkg/apis/openstack/v1beta1"
+	"github.com/takaishi/openstack-fip-controller/pkg/openstack"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	errors_ "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -38,6 +36,7 @@ import (
 )
 
 var log = logf.Log.WithName("controller")
+var finalizerName = "finalizer.floatingipassociate.openstack.repl.info"
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -87,7 +86,34 @@ var _ reconcile.Reconciler = &ReconcileFloatingIPAssociate{}
 // ReconcileFloatingIPAssociate reconciles a FloatingIPAssociate object
 type ReconcileFloatingIPAssociate struct {
 	client.Client
-	scheme *runtime.Scheme
+	scheme   *runtime.Scheme
+	osClient *openstack.OpenStackClient
+}
+
+func (r *ReconcileFloatingIPAssociate) deleteExternalDependency(instance *openstackv1beta1.FloatingIPAssociate, request reconcile.Request) error {
+	ctx := context.Background()
+
+	osClient, err := openstack.NewClient()
+	if err != nil {
+		return err
+	}
+
+	var fip openstackv1beta1.FloatingIP
+	if instance.Status.FloatingIP == "" {
+		nn := types.NamespacedName{Namespace: request.Namespace, Name: instance.Spec.FloatingIP}
+		if err := r.Get(ctx, nn, &fip); err != nil {
+			return err
+		}
+	}
+
+	log.Info("Detatching Floating IP...", "ID", instance.Status.FloatingIP, "FloatingIP", instance.Status.FloatingIP)
+	err = osClient.DetachFIP(fip.Status.ID)
+	if err != nil {
+		return err
+	}
+	log.Info("Deleted Floating IP", "ID", instance.Status.FloatingIP, "FloatingIP", instance.Status.FloatingIP)
+
+	return nil
 }
 
 // Reconcile reads that state of the cluster for a FloatingIPAssociate object and makes changes based on the state read
@@ -97,14 +123,17 @@ type ReconcileFloatingIPAssociate struct {
 // Automatically generate RBAC rules to allow the Controller to read and write Deployments
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=openstack.repl.info,resources=floatingips,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openstack.repl.info,resources=floatingipassociates,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openstack.repl.info,resources=floatingipassociates/status,verbs=get;update;patch
 func (r *ReconcileFloatingIPAssociate) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+	ctx := context.Background()
+
 	// Fetch the FloatingIPAssociate instance
-	instance := &openstackv1beta1.FloatingIPAssociate{}
-	err := r.Get(context.TODO(), request.NamespacedName, instance)
+	instance := openstackv1beta1.FloatingIPAssociate{}
+	err := r.Get(context.TODO(), request.NamespacedName, &instance)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if errors_.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
 			// For additional cleanup logic use finalizers.
 			return reconcile.Result{}, nil
@@ -113,55 +142,87 @@ func (r *ReconcileFloatingIPAssociate) Reconcile(request reconcile.Request) (rec
 		return reconcile.Result{}, err
 	}
 
-	// TODO(user): Change this to be the object type created by your controller
-	// Define the desired Deployment object
-	deploy := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name + "-deployment",
-			Namespace: instance.Namespace,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"deployment": instance.Name + "-deployment"},
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"deployment": instance.Name + "-deployment"}},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "nginx",
-							Image: "nginx",
-						},
-					},
-				},
-			},
-		},
-	}
-	if err := controllerutil.SetControllerReference(instance, deploy, r.scheme); err != nil {
-		return reconcile.Result{}, err
+	if instance.ObjectMeta.DeletionTimestamp.IsZero() {
+		if err := r.setFinalizer(&instance); err != nil {
+			return reconcile.Result{}, err
+		}
+	} else {
+		return r.runFinalizer(&instance, request)
 	}
 
-	// TODO(user): Change this for the object type created by your controller
-	// Check if the Deployment already exists
-	found := &appsv1.Deployment{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: deploy.Name, Namespace: deploy.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
-		log.Info("Creating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
-		err = r.Create(context.TODO(), deploy)
-		return reconcile.Result{}, err
-	} else if err != nil {
-		return reconcile.Result{}, err
+	var fip openstackv1beta1.FloatingIP
+	if instance.Status.FloatingIP == "" {
+		nn := types.NamespacedName{Namespace: request.Namespace, Name: instance.Spec.FloatingIP}
+		if err := r.Get(ctx, nn, &fip); err != nil {
+			return reconcile.Result{}, err
+		}
+		if fip.Status.PortID != "" {
+			if fip.Status.PortID != instance.Spec.PortID {
+				log.Info("FloatingIP already attached another port", "floatingIP", fip.Status.FloatingIP, "portID", fip.Status.PortID)
+				return reconcile.Result{}, errors.Errorf("FloatingIP %s already attached port %s", fip.Status.FloatingIP, fip.Status.PortID)
+			}
+		} else {
+			fmt.Printf("%+v\n", fip)
+			r.osClient, err = openstack.NewClient()
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			err := r.osClient.AttachFIP(fip.Status.ID, instance.Spec.PortID)
+			if err != nil {
+				log.Info("failed to attach Floating IP")
+				return reconcile.Result{}, err
+			}
+			fip.Status.PortID = instance.Spec.PortID
+			if err := r.Status().Update(ctx, &fip); err != nil {
+				return reconcile.Result{}, err
+			}
+		}
 	}
 
-	// TODO(user): Change this for the object type created by your controller
-	// Update the found object and write the result back if there are any changes
-	if !reflect.DeepEqual(deploy.Spec, found.Spec) {
-		found.Spec = deploy.Spec
-		log.Info("Updating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
-		err = r.Update(context.TODO(), found)
-		if err != nil {
+	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileFloatingIPAssociate) setFinalizer(associate *openstackv1beta1.FloatingIPAssociate) error {
+	if !containsString(associate.ObjectMeta.Finalizers, finalizerName) {
+		associate.ObjectMeta.Finalizers = append(associate.ObjectMeta.Finalizers, finalizerName)
+		if err := r.Update(context.Background(), associate); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *ReconcileFloatingIPAssociate) runFinalizer(associate *openstackv1beta1.FloatingIPAssociate, request reconcile.Request) (reconcile.Result, error) {
+	if containsString(associate.ObjectMeta.Finalizers, finalizerName) {
+		if err := r.deleteExternalDependency(associate, request); err != nil {
+			return reconcile.Result{}, err
+		}
+
+		associate.ObjectMeta.Finalizers = removeString(associate.ObjectMeta.Finalizers, finalizerName)
+		if err := r.Update(context.Background(), associate); err != nil {
 			return reconcile.Result{}, err
 		}
 	}
+
 	return reconcile.Result{}, nil
+}
+
+func containsString(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
+}
+
+func removeString(slice []string, s string) (result []string) {
+	for _, item := range slice {
+		if item == s {
+			continue
+		}
+		result = append(result, item)
+	}
+	return
 }

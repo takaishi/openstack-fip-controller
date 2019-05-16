@@ -11,6 +11,8 @@ spec:
     kind: FloatingIPAssociate
     plural: floatingipassociates
   scope: Namespaced
+  subresources:
+    status: {}
   validation:
     openAPIV3Schema:
       properties:
@@ -27,8 +29,26 @@ spec:
         metadata:
           type: object
         spec:
+          properties:
+            floatingIP:
+              description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                Important: Run "make" to regenerate code after modifying this file'
+              type: string
+            portID:
+              type: string
+          required:
+          - floatingIP
+          - portID
           type: object
         status:
+          properties:
+            floatingIP:
+              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                of cluster Important: Run "make" to regenerate code after modifying
+                this file'
+              type: string
+          required:
+          - floatingIP
           type: object
   version: v1beta1
 status:

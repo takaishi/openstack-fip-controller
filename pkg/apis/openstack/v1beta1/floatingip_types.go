@@ -36,6 +36,7 @@ type FloatingIPStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	ID         string
 	FloatingIP string
+	PortID     string
 }
 
 // +genclient

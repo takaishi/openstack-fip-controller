@@ -154,6 +154,7 @@ func (r *ReconcileFloatingIP) Reconcile(request reconcile.Request) (reconcile.Re
 
 	return reconcile.Result{}, nil
 }
+
 func (r *ReconcileFloatingIP) setFinalizer(fip *openstackv1beta1.FloatingIP) error {
 	if !containsString(fip.ObjectMeta.Finalizers, finalizerName) {
 		fip.ObjectMeta.Finalizers = append(fip.ObjectMeta.Finalizers, finalizerName)

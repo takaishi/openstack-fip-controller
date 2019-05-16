@@ -237,6 +237,27 @@ func (client *OpenStackClient) CreateFIP(networkName string) (*floatingips.Float
 	return floatingips.Create(networkClient, createOpts).Extract()
 }
 
+func (client *OpenStackClient) AttachFIP(id string, portID string) error {
+	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	if err != nil {
+		return err
+	}
+
+	updateOpts := floatingips.UpdateOpts{PortID: &portID}
+	return floatingips.Update(networkClient, id, updateOpts).Err
+}
+
+func (client *OpenStackClient) DetachFIP(id string) error {
+	portID := ""
+	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	if err != nil {
+		return err
+	}
+
+	updateOpts := floatingips.UpdateOpts{PortID: &portID}
+	return floatingips.Update(networkClient, id, updateOpts).Err
+}
+
 func (client *OpenStackClient) FindPortByServer(server servers.Server) (*ports.Port, error) {
 	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
 	if err != nil {
