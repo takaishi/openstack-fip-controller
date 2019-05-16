@@ -5,7 +5,4 @@ metadata:
     controller-tools.k8s.io: "1.0"
   name: floatingip-sample
 spec:
-  nodeSelector:
-    role: node
-#    foo: bar
   network: net-722-ext

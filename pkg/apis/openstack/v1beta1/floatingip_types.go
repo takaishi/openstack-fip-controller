@@ -27,15 +27,15 @@ import (
 type FloatingIPSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	NodeSelector map[string]string `json:"nodeSelector"`
-	Network      string            `json:"network"`
+	Network string `json:"network"`
 }
 
 // FloatingIPStatus defines the observed state of FloatingIP
 type FloatingIPStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	ID string
+	ID         string
+	FloatingIP string
 }
 
 // +genclient
@@ -43,6 +43,7 @@ type FloatingIPStatus struct {
 
 // FloatingIP is the Schema for the floatingips API
 // +k8s:openapi-gen=true
+// +kubebuilder:subresource:status
 type FloatingIP struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

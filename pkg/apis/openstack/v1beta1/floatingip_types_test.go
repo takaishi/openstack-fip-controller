@@ -36,8 +36,7 @@ func TestStorageFloatingIP(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: FloatingIPSpec{
-			NodeSelector: map[string]string{"foo": "bar"},
-			Network:      "test-network",
+			Network: "test-network",
 		},
 	}
 	g := gomega.NewGomegaWithT(t)

@@ -11,6 +11,8 @@ spec:
     kind: FloatingIP
     plural: floatingips
   scope: Namespaced
+  subresources:
+    status: {}
   validation:
     openAPIV3Schema:
       properties:
@@ -29,13 +31,10 @@ spec:
         spec:
           properties:
             network:
-              type: string
-            nodeSelector:
               description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                 Important: Run "make" to regenerate code after modifying this file'
-              type: object
+              type: string
           required:
-          - nodeSelector
           - network
           type: object
         status:
