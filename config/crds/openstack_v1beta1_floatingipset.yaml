@@ -11,6 +11,8 @@ spec:
     kind: FloatingIPSet
     plural: floatingipsets
   scope: Namespaced
+  subresources:
+    status: {}
   validation:
     openAPIV3Schema:
       properties:
@@ -28,14 +30,27 @@ spec:
           type: object
         spec:
           properties:
+            network:
+              type: string
             nodeSelector:
               description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                 Important: Run "make" to regenerate code after modifying this file'
               type: object
           required:
           - nodeSelector
+          - network
           type: object
         status:
+          properties:
+            nodes:
+              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                of cluster Important: Run "make" to regenerate code after modifying
+                this file'
+              items:
+                type: string
+              type: array
+          required:
+          - nodes
           type: object
   version: v1beta1
 status:
