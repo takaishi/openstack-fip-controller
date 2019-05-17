@@ -164,7 +164,6 @@ func (r *ReconcileFloatingIPAssociate) Reconcile(request reconcile.Request) (rec
 		return reconcile.Result{}, err
 	}
 
-	fmt.Printf("node.Status.Addresses: %+v\n", node.Status.Addresses)
 	var portID string
 	for _, iface := range node.Status.Addresses {
 		if iface.Type == v1.NodeInternalIP {
@@ -172,17 +171,14 @@ func (r *ReconcileFloatingIPAssociate) Reconcile(request reconcile.Request) (rec
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			fmt.Printf("server id: %s\n", node.Status.NodeInfo.SystemUUID)
 			server, err := r.osClient.GetServer(strings.ToLower(node.Status.NodeInfo.SystemUUID))
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			fmt.Printf("server name: %+v\n", server.Name)
 			port, err := r.osClient.FindPortByServer(*server)
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			fmt.Printf("port: %+v\n", port)
 			portID = port.ID
 		}
 	}
