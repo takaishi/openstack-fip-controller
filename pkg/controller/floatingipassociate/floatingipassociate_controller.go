@@ -18,7 +18,7 @@ package floatingipassociate
 
 import (
 	"context"
-	"fmt"
+	"github.com/gophercloud/gophercloud"
 	"github.com/pkg/errors"
 	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/pkg/apis/openstack/v1beta1"
 	"github.com/takaishi/openstack-fip-controller/pkg/openstack"
@@ -106,10 +106,22 @@ func (r *ReconcileFloatingIPAssociate) deleteExternalDependency(instance *openst
 	if instance.Status.FloatingIP == "" {
 		nn := types.NamespacedName{Namespace: request.Namespace, Name: instance.Spec.FloatingIP}
 		if err := r.Get(ctx, nn, &fip); err != nil {
+			if errors_.IsNotFound(err) {
+				return nil
+			}
 			return err
 		}
 	}
 
+	_, err = osClient.GetFIP(fip.Status.ID)
+	if err != nil {
+		switch err.(type) {
+		case gophercloud.ErrDefault404:
+			return nil
+		default:
+			return err
+		}
+	}
 	log.Info("Detatching Floating IP...", "ID", instance.Status.FloatingIP, "FloatingIP", instance.Status.FloatingIP)
 	err = osClient.DetachFIP(fip.Status.ID)
 	if err != nil {
@@ -195,7 +207,6 @@ func (r *ReconcileFloatingIPAssociate) Reconcile(request reconcile.Request) (rec
 				return reconcile.Result{}, errors.Errorf("FloatingIP %s already attached port %s", fip.Status.FloatingIP, fip.Status.PortID)
 			}
 		} else {
-			fmt.Printf("%+v\n", fip)
 			r.osClient, err = openstack.NewClient()
 			if err != nil {
 				return reconcile.Result{}, err

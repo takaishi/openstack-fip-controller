@@ -213,6 +213,14 @@ func (e ErrFloatingIPNotFound) Error() string {
 	return fmt.Sprintf("Unable to find FloatingIP with FixedIP %s and NetworkName %s", e.FixedIP, e.NetworkName)
 }
 
+func (client *OpenStackClient) GetFIP(id string) (*floatingips.FloatingIP, error) {
+	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	if err != nil {
+		return nil, err
+	}
+	return floatingips.Get(networkClient, id).Extract()
+}
+
 func (client *OpenStackClient) CreateFIP(networkName string) (*floatingips.FloatingIP, error) {
 	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
 	if err != nil {

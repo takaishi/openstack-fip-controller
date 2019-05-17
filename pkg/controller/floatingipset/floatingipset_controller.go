@@ -112,18 +112,18 @@ func (r *ReconcileFloatingIPSet) deleteExternalDependency(instance *openstackv1b
 			return err
 		}
 
-		var fip openstackv1beta1.FloatingIP
-		nn = types.NamespacedName{Namespace: req.Namespace, Name: associate.Spec.FloatingIP}
-		if err := r.Get(ctx, nn, &fip); err != nil {
-			return err
-
-		}
 		log.Info("Deleting FloatingIPAssociate...", "Name", node)
 		if err := r.Delete(ctx, &associate); err != nil {
 			return err
 		}
 		log.Info("Deleted FloatingIPAssociate", "Name", node)
 
+		var fip openstackv1beta1.FloatingIP
+		nn = types.NamespacedName{Namespace: req.Namespace, Name: associate.Spec.FloatingIP}
+		if err := r.Get(ctx, nn, &fip); err != nil {
+			return err
+
+		}
 		log.Info("Deleting FloatingIP...", "Name", node)
 		if err := r.Delete(ctx, &fip); err != nil {
 			return err
@@ -218,8 +218,9 @@ func (r *ReconcileFloatingIPSet) Reconcile(request reconcile.Request) (reconcile
 					if err := r.Create(ctx, &associate); err != nil {
 						return reconcile.Result{}, err
 					}
+				} else {
+					return reconcile.Result{}, err
 				}
-				return reconcile.Result{}, err
 			}
 			instance.Status.Nodes = append(instance.Status.Nodes, node.Name)
 		}

@@ -18,6 +18,7 @@ package floatingip
 
 import (
 	"context"
+	"github.com/gophercloud/gophercloud"
 	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/pkg/apis/openstack/v1beta1"
 	"github.com/takaishi/openstack-fip-controller/pkg/openstack"
 	appsv1 "k8s.io/api/apps/v1"
@@ -93,6 +94,16 @@ func (r *ReconcileFloatingIP) deleteExternalDependency(instance *openstackv1beta
 		return err
 	}
 
+	_, err = osClient.GetFIP(instance.Status.ID)
+	if err != nil {
+		switch err.(type) {
+		case gophercloud.ErrDefault404:
+			return nil
+		default:
+			log.Error(err, "Unable to get FloatingIP")
+			return err
+		}
+	}
 	log.Info("Deleting Floating IP...", "ID", instance.Status.ID, "FloatingIP", instance.Status.FloatingIP)
 	err = osClient.DeleteFIP(instance.Status.ID)
 	if err != nil {
