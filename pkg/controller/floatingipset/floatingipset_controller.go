@@ -19,6 +19,7 @@ package floatingipset
 import (
 	"context"
 	"fmt"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
@@ -30,7 +31,7 @@ import (
 
 	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/pkg/apis/openstack/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	errors_ "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -152,7 +153,7 @@ func (r *ReconcileFloatingIPSet) Reconcile(request reconcile.Request) (reconcile
 	instance := openstackv1beta1.FloatingIPSet{}
 	err := r.Get(context.TODO(), request.NamespacedName, &instance)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if errors_.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
 			// For additional cleanup logic use finalizers.
 			return reconcile.Result{}, nil
@@ -183,46 +184,49 @@ func (r *ReconcileFloatingIPSet) Reconcile(request reconcile.Request) (reconcile
 
 	for _, node := range nodes.Items {
 		if !containsString(instance.Status.Nodes, node.Name) {
+			if err := r.AttachFIPToNode(&instance, node, request); err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+	}
+
+	for _, name := range instance.Status.Nodes {
+		exist := false
+		for _, node := range nodes.Items {
+			if name == node.Name {
+				exist = true
+			}
+		}
+		if !exist {
 			var associate openstackv1beta1.FloatingIPAssociate
 
-			nn := types.NamespacedName{Namespace: request.Namespace, Name: node.Name}
+			nn := types.NamespacedName{Namespace: request.Namespace, Name: name}
 			if err := r.Get(ctx, nn, &associate); err != nil {
-				if errors.IsNotFound(err) {
-					rand.Seed(time.Now().Unix())
-
-					name := fmt.Sprintf("floatingip-%s", utilrand.String(randomLength))
-
-					fip := openstackv1beta1.FloatingIP{
-						ObjectMeta: metav1.ObjectMeta{
-							Labels:      make(map[string]string),
-							Annotations: make(map[string]string),
-							Name:        name,
-							Namespace:   request.Namespace,
-						},
-						Spec: openstackv1beta1.FloatingIPSpec{
-							Network: instance.Spec.Network,
-						},
-					}
-					if err := r.Create(ctx, &fip); err != nil {
-						return reconcile.Result{}, err
-					}
-
-					associate.ObjectMeta = metav1.ObjectMeta{
-						Labels:      make(map[string]string),
-						Annotations: make(map[string]string),
-						Name:        node.Name,
-						Namespace:   request.Namespace,
-					}
-					associate.Spec.Node = node.Name
-					associate.Spec.FloatingIP = fip.Name
-					if err := r.Create(ctx, &associate); err != nil {
-						return reconcile.Result{}, err
-					}
-				} else {
-					return reconcile.Result{}, err
+				if errors_.IsNotFound(err) {
+					instance.Status.Nodes = removeString(instance.Status.Nodes, name)
+					break
 				}
+				return reconcile.Result{}, err
 			}
-			instance.Status.Nodes = append(instance.Status.Nodes, node.Name)
+
+			log.Info("Deleting FloatingIPAssociate...", "Name", name)
+			if err := r.Delete(ctx, &associate); err != nil {
+				return reconcile.Result{}, err
+			}
+			log.Info("Deleted FloatingIPAssociate", "Name", name)
+
+			var fip openstackv1beta1.FloatingIP
+			nn = types.NamespacedName{Namespace: request.Namespace, Name: associate.Spec.FloatingIP}
+			if err := r.Get(ctx, nn, &fip); err != nil {
+				return reconcile.Result{}, err
+			}
+			log.Info("Deleting FloatingIP...", "Name", name)
+			if err := r.Delete(ctx, &fip); err != nil {
+				return reconcile.Result{}, err
+			}
+			log.Info("Deleted FloatingIP", "Name", name)
+
+			instance.Status.Nodes = removeString(instance.Status.Nodes, name)
 		}
 	}
 
@@ -231,7 +235,7 @@ func (r *ReconcileFloatingIPSet) Reconcile(request reconcile.Request) (reconcile
 		return reconcile.Result{}, err
 	}
 
-	return reconcile.Result{}, nil
+	return reconcile.Result{RequeueAfter: 60 * time.Second}, nil
 }
 
 func (r *ReconcileFloatingIPSet) setFinalizer(fip *openstackv1beta1.FloatingIPSet) error {
@@ -258,6 +262,52 @@ func (r *ReconcileFloatingIPSet) runFinalizer(fip *openstackv1beta1.FloatingIPSe
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileFloatingIPSet)AttachFIPToNode(instance *openstackv1beta1.FloatingIPSet, node v1.Node, request reconcile.Request) error {
+	ctx := context.Background()
+	var associate openstackv1beta1.FloatingIPAssociate
+
+	nn := types.NamespacedName{Namespace: request.Namespace, Name: node.Name}
+	if err := r.Get(ctx, nn, &associate); err != nil {
+		if errors_.IsNotFound(err) {
+			rand.Seed(time.Now().Unix())
+
+			name := fmt.Sprintf("floatingip-%s", utilrand.String(randomLength))
+
+			fip := openstackv1beta1.FloatingIP{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      make(map[string]string),
+					Annotations: make(map[string]string),
+					Name:        name,
+					Namespace:   request.Namespace,
+				},
+				Spec: openstackv1beta1.FloatingIPSpec{
+					Network: instance.Spec.Network,
+				},
+			}
+			if err := r.Create(ctx, &fip); err != nil {
+				return err
+			}
+
+			associate.ObjectMeta = metav1.ObjectMeta{
+				Labels:      make(map[string]string),
+				Annotations: make(map[string]string),
+				Name:        node.Name,
+				Namespace:   request.Namespace,
+			}
+			associate.Spec.Node = node.Name
+			associate.Spec.FloatingIP = fip.Name
+			if err := r.Create(ctx, &associate); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	instance.Status.Nodes = append(instance.Status.Nodes, node.Name)
+
+	return nil
 }
 
 func kubeClient() (*kubernetes.Clientset, error) {
