@@ -20,6 +20,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
 	"github.com/takaishi/openstack-fip-controller/mock"
+	"github.com/takaishi/openstack-fip-controller/pkg/openstack"
 	"testing"
 	"time"
 
@@ -41,6 +42,17 @@ var depKey = types.NamespacedName{Name: "foo", Namespace: "default"}
 
 const timeout = time.Second * 5
 
+func newOpenStackClientMock(controller *gomock.Controller) openstack.OpenStackClientInterface {
+	fip := floatingips.FloatingIP{ID: "aaaa", FloatingIP: "127.0.0.1"}
+	osClient := mock_openstack.NewMockOpenStackClientInterface(controller)
+
+	osClient.EXPECT().CreateFIP("test-network").Return(&fip, nil)
+	osClient.EXPECT().DeleteFIP("aaaa").Return(nil)
+	osClient.EXPECT().GetFIP("aaaa").Return(&fip, nil)
+
+	return osClient
+}
+
 func TestReconcile(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 	instance := &openstackv1beta1.FloatingIP{
@@ -59,11 +71,7 @@ func TestReconcile(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	fip := floatingips.FloatingIP{ID: "aaaa", FloatingIP: "127.0.0.1"}
-	osClient := mock_openstack.NewMockOpenStackClientInterface(mockCtrl)
-	osClient.EXPECT().CreateFIP("test-network").Return(&fip, nil)
-	osClient.EXPECT().DeleteFIP("aaaa").Return(nil)
-	osClient.EXPECT().GetFIP("aaaa").Return(&fip, nil)
+	osClient := newOpenStackClientMock(mockCtrl)
 
 	recFn, requests := SetupTestReconcile(&ReconcileFloatingIP{Client: mgr.GetClient(), scheme: mgr.GetScheme(), osClient: osClient})
 	g.Expect(add(mgr, recFn)).NotTo(gomega.HaveOccurred())
@@ -87,27 +95,27 @@ func TestReconcile(t *testing.T) {
 	defer c.Delete(context.TODO(), instance)
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
 
-	deploy := &openstackv1beta1.FloatingIP{}
-	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
+	fip := &openstackv1beta1.FloatingIP{}
+	g.Eventually(func() error { return c.Get(context.TODO(), depKey, fip) }, timeout).
 		Should(gomega.Succeed())
 
 	g.Eventually(func() string {
-		c.Get(context.TODO(), depKey, deploy)
-		return deploy.Status.ID
+		c.Get(context.TODO(), depKey, fip)
+		return fip.Status.ID
 	}, timeout).Should(gomega.Equal("aaaa"))
 
 	g.Eventually(func() string {
-		c.Get(context.TODO(), depKey, deploy)
-		return deploy.Status.FloatingIP
+		c.Get(context.TODO(), depKey, fip)
+		return fip.Status.FloatingIP
 	}, timeout).Should(gomega.Equal("127.0.0.1"))
 
 	// Delete the Deployment and expect Reconcile to be called for Deployment deletion
-	g.Expect(c.Delete(context.TODO(), deploy)).NotTo(gomega.HaveOccurred())
+	g.Expect(c.Delete(context.TODO(), fip)).NotTo(gomega.HaveOccurred())
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
-	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
+	g.Eventually(func() error { return c.Get(context.TODO(), depKey, fip) }, timeout).
 		Should(gomega.Succeed())
 
 	// Manually delete Deployment since GC isn't enabled in the test control plane
-	g.Eventually(func() error { return c.Delete(context.TODO(), deploy) }, timeout).
+	g.Eventually(func() error { return c.Delete(context.TODO(), fip) }, timeout).
 		Should(gomega.MatchError("floatingips.openstack.repl.info \"foo\" not found"))
 }
