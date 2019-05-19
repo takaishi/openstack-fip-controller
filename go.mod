@@ -14,6 +14,7 @@ require (
 	github.com/gobuffalo/envy v1.6.15
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/groupcache v0.0.0-20190129154638-5b532d6fd5ef
+	github.com/golang/mock v1.3.1
 	github.com/golang/protobuf v1.3.1
 	github.com/google/btree v1.0.0
 	github.com/google/gofuzz v1.0.0
@@ -54,7 +55,7 @@ require (
 	golang.org/x/sys v0.0.0-20190410235845-0ad05ae3009d
 	golang.org/x/text v0.3.1-0.20180807135948-17ff2d5776d2
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
-	golang.org/x/tools v0.0.0-20190410211219-2538eef75904
+	golang.org/x/tools v0.0.0-20190425150028-36563e24a262
 	google.golang.org/appengine v1.5.0
 	gopkg.in/fsnotify.v1 v1.4.7
 	gopkg.in/inf.v0 v0.9.1

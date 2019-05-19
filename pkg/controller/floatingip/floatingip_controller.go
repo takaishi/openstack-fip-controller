@@ -44,12 +44,17 @@ var finalizerName = "finalizer.floatingip.openstack.repl.info"
 // Add creates a new FloatingIP Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
-	return add(mgr, newReconciler(mgr))
+	osClient, err := openstack.NewClient()
+	if err != nil {
+		return err
+	}
+
+	return add(mgr, newReconciler(mgr, osClient))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileFloatingIP{Client: mgr.GetClient(), scheme: mgr.GetScheme()}
+func newReconciler(mgr manager.Manager, osClient openstack.OpenStackClientInterface) reconcile.Reconciler {
+	return &ReconcileFloatingIP{Client: mgr.GetClient(), scheme: mgr.GetScheme(), osClient: osClient}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -85,16 +90,11 @@ var _ reconcile.Reconciler = &ReconcileFloatingIP{}
 type ReconcileFloatingIP struct {
 	client.Client
 	scheme   *runtime.Scheme
-	osClient *openstack.OpenStackClient
+	osClient openstack.OpenStackClientInterface
 }
 
 func (r *ReconcileFloatingIP) deleteExternalDependency(instance *openstackv1beta1.FloatingIP) error {
-	osClient, err := openstack.NewClient()
-	if err != nil {
-		return err
-	}
-
-	_, err = osClient.GetFIP(instance.Status.ID)
+	_, err := r.osClient.GetFIP(instance.Status.ID)
 	if err != nil {
 		switch err.(type) {
 		case gophercloud.ErrDefault404:
@@ -105,7 +105,7 @@ func (r *ReconcileFloatingIP) deleteExternalDependency(instance *openstackv1beta
 		}
 	}
 	log.Info("Deleting Floating IP...", "ID", instance.Status.ID, "FloatingIP", instance.Status.FloatingIP)
-	err = osClient.DeleteFIP(instance.Status.ID)
+	err = r.osClient.DeleteFIP(instance.Status.ID)
 	if err != nil {
 		return err
 	}
@@ -140,11 +140,6 @@ func (r *ReconcileFloatingIP) Reconcile(request reconcile.Request) (reconcile.Re
 		}
 	} else {
 		return r.runFinalizer(&instance)
-	}
-
-	r.osClient, err = openstack.NewClient()
-	if err != nil {
-		return reconcile.Result{}, err
 	}
 
 	if instance.Status.ID == "" {

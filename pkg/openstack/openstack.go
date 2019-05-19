@@ -22,14 +22,32 @@ import (
 
 var log = logf.Log.WithName("controller")
 
-type OpenStackClient struct {
-	providerClient *gophercloud.ProviderClient
-	regionName     string
+type OpenStackClientInterface interface {
+	GetTenant(id string) (tenants.Tenant, error)
+	GetTenantByName(name string) (projects.Project, error)
+
+	GetServer(id string) (*servers.Server, error)
+
+	GetNetworkByName(name string) (networks.Network, error)
+
+	FindFIP(networkName string, fixedIP string) (floatingips.FloatingIP, error)
+	GetFIP(id string) (*floatingips.FloatingIP, error)
+	CreateFIP(networkName string) (*floatingips.FloatingIP, error)
+	DeleteFIP(id string) error
+	AttachFIP(id string, portID string) error
+	DetachFIP(id string) error
+
+	FindPortByServer(server servers.Server) (*ports.Port, error)
 }
 
-func NewClient() (*OpenStackClient, error) {
+type OpenStackClient struct {
+	ProviderClient *gophercloud.ProviderClient
+	RegionName     string
+}
+
+func NewClient() (OpenStackClientInterface, error) {
 	client := OpenStackClient{}
-	client.regionName = os.Getenv("OS_REGION_NAME")
+	client.RegionName = os.Getenv("OS_REGION_NAME")
 	cert := os.Getenv("OS_CERT")
 	key := os.Getenv("OS_KEY")
 
@@ -38,7 +56,7 @@ func NewClient() (*OpenStackClient, error) {
 		return nil, errors.Wrapf(err, "Failed to create AuthOptions from env")
 	}
 
-	client.providerClient, err = _openstack.NewClient(authOpts.IdentityEndpoint)
+	client.ProviderClient, err = _openstack.NewClient(authOpts.IdentityEndpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -61,10 +79,10 @@ func NewClient() (*OpenStackClient, error) {
 		tlsConfig.BuildNameToCertificate()
 		transport := &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: tlsConfig}
 
-		client.providerClient.HTTPClient.Transport = transport
+		client.ProviderClient.HTTPClient.Transport = transport
 	}
 
-	err = _openstack.Authenticate(client.providerClient, authOpts)
+	err = _openstack.Authenticate(client.ProviderClient, authOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +91,7 @@ func NewClient() (*OpenStackClient, error) {
 }
 
 func (client *OpenStackClient) GetTenant(id string) (tenants.Tenant, error) {
-	identityClient, err := _openstack.NewIdentityV3(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	identityClient, err := _openstack.NewIdentityV3(client.ProviderClient, gophercloud.EndpointOpts{Region: client.RegionName})
 	if err != nil {
 		return tenants.Tenant{}, err
 	}
@@ -92,7 +110,7 @@ func (client *OpenStackClient) GetTenant(id string) (tenants.Tenant, error) {
 }
 
 func (client *OpenStackClient) GetTenantByName(name string) (projects.Project, error) {
-	identityClient, err := _openstack.NewIdentityV3(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	identityClient, err := _openstack.NewIdentityV3(client.ProviderClient, gophercloud.EndpointOpts{Region: client.RegionName})
 	if err != nil {
 		return projects.Project{}, err
 	}
@@ -125,7 +143,7 @@ func (client *OpenStackClient) GetTenantByName(name string) (projects.Project, e
 }
 
 func (client *OpenStackClient) GetServer(id string) (*servers.Server, error) {
-	computeClient, err := _openstack.NewComputeV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	computeClient, err := _openstack.NewComputeV2(client.ProviderClient, gophercloud.EndpointOpts{Region: client.RegionName})
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +152,7 @@ func (client *OpenStackClient) GetServer(id string) (*servers.Server, error) {
 }
 
 func (client *OpenStackClient) GetNetworkByName(name string) (networks.Network, error) {
-	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	networkClient, err := _openstack.NewNetworkV2(client.ProviderClient, gophercloud.EndpointOpts{Region: client.RegionName})
 	if err != nil {
 		return networks.Network{}, err
 	}
@@ -167,7 +185,7 @@ func (client *OpenStackClient) GetNetworkByName(name string) (networks.Network, 
 }
 
 func (client *OpenStackClient) FindFIP(networkName string, fixedIP string) (floatingips.FloatingIP, error) {
-	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	networkClient, err := _openstack.NewNetworkV2(client.ProviderClient, gophercloud.EndpointOpts{Region: client.RegionName})
 	if err != nil {
 		return floatingips.FloatingIP{}, err
 	}
@@ -214,7 +232,7 @@ func (e ErrFloatingIPNotFound) Error() string {
 }
 
 func (client *OpenStackClient) GetFIP(id string) (*floatingips.FloatingIP, error) {
-	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	networkClient, err := _openstack.NewNetworkV2(client.ProviderClient, gophercloud.EndpointOpts{Region: client.RegionName})
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +240,7 @@ func (client *OpenStackClient) GetFIP(id string) (*floatingips.FloatingIP, error
 }
 
 func (client *OpenStackClient) CreateFIP(networkName string) (*floatingips.FloatingIP, error) {
-	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	networkClient, err := _openstack.NewNetworkV2(client.ProviderClient, gophercloud.EndpointOpts{Region: client.RegionName})
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +254,7 @@ func (client *OpenStackClient) CreateFIP(networkName string) (*floatingips.Float
 }
 
 func (client *OpenStackClient) AttachFIP(id string, portID string) error {
-	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	networkClient, err := _openstack.NewNetworkV2(client.ProviderClient, gophercloud.EndpointOpts{Region: client.RegionName})
 	if err != nil {
 		return err
 	}
@@ -247,7 +265,7 @@ func (client *OpenStackClient) AttachFIP(id string, portID string) error {
 
 func (client *OpenStackClient) DetachFIP(id string) error {
 	portID := ""
-	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	networkClient, err := _openstack.NewNetworkV2(client.ProviderClient, gophercloud.EndpointOpts{Region: client.RegionName})
 	if err != nil {
 		return err
 	}
@@ -257,7 +275,7 @@ func (client *OpenStackClient) DetachFIP(id string) error {
 }
 
 func (client *OpenStackClient) FindPortByServer(server servers.Server) (*ports.Port, error) {
-	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	networkClient, err := _openstack.NewNetworkV2(client.ProviderClient, gophercloud.EndpointOpts{Region: client.RegionName})
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +309,7 @@ func (client *OpenStackClient) FindPortByServer(server servers.Server) (*ports.P
 }
 
 func (client *OpenStackClient) DeleteFIP(id string) error {
-	networkClient, err := _openstack.NewNetworkV2(client.providerClient, gophercloud.EndpointOpts{Region: client.regionName})
+	networkClient, err := _openstack.NewNetworkV2(client.ProviderClient, gophercloud.EndpointOpts{Region: client.RegionName})
 	if err != nil {
 		return err
 	}
