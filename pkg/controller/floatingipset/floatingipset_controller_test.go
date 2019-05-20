@@ -17,13 +17,13 @@ limitations under the License.
 package floatingipset
 
 import (
+	"k8s.io/api/core/v1"
 	"testing"
 	"time"
 
 	"github.com/onsi/gomega"
 	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/pkg/apis/openstack/v1beta1"
 	"golang.org/x/net/context"
-	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -41,7 +41,39 @@ const timeout = time.Second * 5
 
 func TestReconcile(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
-	instance := &openstackv1beta1.FloatingIPSet{ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"}}
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node-foo",
+			Labels: map[string]string{
+				"node-role.kubernetes.io/node": "true",
+				"foo":                          "bar",
+			},
+		},
+		Status: v1.NodeStatus{
+			Addresses: []v1.NodeAddress{
+				{
+					Type:    v1.NodeInternalIP,
+					Address: "127.0.0.1",
+				},
+			},
+			NodeInfo: v1.NodeSystemInfo{
+				SystemUUID: "server",
+			},
+		},
+	}
+	instance := &openstackv1beta1.FloatingIPSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "foo",
+			Namespace: "default",
+		},
+		Spec: openstackv1beta1.FloatingIPSetSpec{
+			NodeSelector: map[string]string{
+				"role": "node",
+				"foo":  "bar",
+			},
+			Network: "test-network",
+		},
+	}
 
 	// Setup the Manager and Controller.  Wrap the Controller Reconcile function so it writes each request to a
 	// channel when it is finished.
@@ -59,6 +91,12 @@ func TestReconcile(t *testing.T) {
 		mgrStopped.Wait()
 	}()
 
+	err = c.Create(context.TODO(), node)
+	if apierrors.IsInvalid(err) {
+		t.Logf("failed to create object, got an invalid object error: %v", err)
+		return
+	}
+
 	// Create the FloatingIPSet object and expect the Reconcile and Deployment to be created
 	err = c.Create(context.TODO(), instance)
 	// The instance object may not be a valid object because it might be missing some required fields.
@@ -71,18 +109,24 @@ func TestReconcile(t *testing.T) {
 	defer c.Delete(context.TODO(), instance)
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
 
-	deploy := &appsv1.Deployment{}
-	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
+	fipassociate := &openstackv1beta1.FloatingIPAssociate{}
+	fipassociateKey := types.NamespacedName{Name: "node-foo", Namespace: "default"}
+	g.Eventually(func() error { return c.Get(context.TODO(), fipassociateKey, fipassociate) }, timeout).
+		Should(gomega.Succeed())
+
+	fip := &openstackv1beta1.FloatingIP{}
+	fipKey := types.NamespacedName{Name: fipassociate.Spec.FloatingIP, Namespace: "default"}
+	g.Eventually(func() error { return c.Get(context.TODO(), fipKey, fip) }, timeout).
 		Should(gomega.Succeed())
 
 	// Delete the Deployment and expect Reconcile to be called for Deployment deletion
-	g.Expect(c.Delete(context.TODO(), deploy)).NotTo(gomega.HaveOccurred())
-	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
-	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
-		Should(gomega.Succeed())
+	//g.Expect(c.Delete(context.TODO(), deploy)).NotTo(gomega.HaveOccurred())
+	//g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
+	//g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
+	//	Should(gomega.Succeed())
 
 	// Manually delete Deployment since GC isn't enabled in the test control plane
-	g.Eventually(func() error { return c.Delete(context.TODO(), deploy) }, timeout).
-		Should(gomega.MatchError("deployments.apps \"foo-deployment\" not found"))
+	//g.Eventually(func() error { return c.Delete(context.TODO(), deploy) }, timeout).
+	//	Should(gomega.MatchError("deployments.apps \"foo-deployment\" not found"))
 
 }

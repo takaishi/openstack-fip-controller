@@ -147,6 +147,7 @@ func (r *ReconcileFloatingIPSet) deleteExternalDependency(instance *openstackv1b
 // +kubebuilder:rbac:groups=openstack.repl.info,resources=floatingipsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openstack.repl.info,resources=floatingipsets/status,verbs=get;update;patch
 func (r *ReconcileFloatingIPSet) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+	fmt.Println("Reconcile")
 	ctx := context.Background()
 
 	// Fetch the FloatingIPSet instance
@@ -170,13 +171,11 @@ func (r *ReconcileFloatingIPSet) Reconcile(request reconcile.Request) (reconcile
 		return r.runFinalizer(&instance, request)
 	}
 
-	clientset, err := kubeClient()
-	if err != nil {
-		log.Info("Error", "Failed to create kubeClient", err.Error())
-		return reconcile.Result{}, err
+	nodes := v1.NodeList{}
+	listOpts := client.ListOptions{
+		Raw: &metav1.ListOptions{LabelSelector: labelSelector(&instance)},
 	}
-
-	nodes, err := clientset.CoreV1().Nodes().List(metav1.ListOptions{LabelSelector: labelSelector(&instance)})
+	err = r.List(ctx, &listOpts, &nodes)
 	if err != nil {
 		log.Info("Error", "Failed to NodeList", err.Error())
 		return reconcile.Result{}, err
@@ -264,7 +263,7 @@ func (r *ReconcileFloatingIPSet) runFinalizer(fip *openstackv1beta1.FloatingIPSe
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileFloatingIPSet)AttachFIPToNode(instance *openstackv1beta1.FloatingIPSet, node v1.Node, request reconcile.Request) error {
+func (r *ReconcileFloatingIPSet) AttachFIPToNode(instance *openstackv1beta1.FloatingIPSet, node v1.Node, request reconcile.Request) error {
 	ctx := context.Background()
 	var associate openstackv1beta1.FloatingIPAssociate
 

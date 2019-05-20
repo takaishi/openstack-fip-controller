@@ -34,6 +34,10 @@ func TestStorageFloatingIPSet(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "foo",
 			Namespace: "default",
+		},
+		Spec: FloatingIPSetSpec{
+			Network:      "test-network",
+			NodeSelector: map[string]string{"role": "node"},
 		}}
 	g := gomega.NewGomegaWithT(t)
 
