@@ -34,6 +34,10 @@ func TestStorageFloatingIPAssociate(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "foo",
 			Namespace: "default",
+		},
+		Spec: FloatingIPAssociateSpec{
+			Node:       "node-test",
+			FloatingIP: "floatingip-test",
 		}}
 	g := gomega.NewGomegaWithT(t)
 

@@ -50,12 +50,17 @@ var finalizerName = "finalizer.floatingipassociate.openstack.repl.info"
 // Add creates a new FloatingIPAssociate Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
-	return add(mgr, newReconciler(mgr))
+	osClient, err := openstack.NewClient()
+	if err != nil {
+		return err
+	}
+
+	return add(mgr, newReconciler(mgr, osClient))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileFloatingIPAssociate{Client: mgr.GetClient(), scheme: mgr.GetScheme()}
+func newReconciler(mgr manager.Manager, osClient openstack.OpenStackClientInterface) reconcile.Reconciler {
+	return &ReconcileFloatingIPAssociate{Client: mgr.GetClient(), scheme: mgr.GetScheme(), osClient: osClient}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -91,16 +96,11 @@ var _ reconcile.Reconciler = &ReconcileFloatingIPAssociate{}
 type ReconcileFloatingIPAssociate struct {
 	client.Client
 	scheme   *runtime.Scheme
-	osClient *openstack.OpenStackClient
+	osClient openstack.OpenStackClientInterface
 }
 
 func (r *ReconcileFloatingIPAssociate) deleteExternalDependency(instance *openstackv1beta1.FloatingIPAssociate, request reconcile.Request) error {
 	ctx := context.Background()
-
-	osClient, err := openstack.NewClient()
-	if err != nil {
-		return err
-	}
 
 	var fip openstackv1beta1.FloatingIP
 	if instance.Status.FloatingIP == "" {
@@ -113,7 +113,7 @@ func (r *ReconcileFloatingIPAssociate) deleteExternalDependency(instance *openst
 		}
 	}
 
-	_, err = osClient.GetFIP(fip.Status.ID)
+	_, err := r.osClient.GetFIP(fip.Status.ID)
 	if err != nil {
 		switch err.(type) {
 		case gophercloud.ErrDefault404:
@@ -123,7 +123,7 @@ func (r *ReconcileFloatingIPAssociate) deleteExternalDependency(instance *openst
 		}
 	}
 	log.Info("Detatching Floating IP...", "ID", instance.Status.FloatingIP, "FloatingIP", instance.Status.FloatingIP)
-	err = osClient.DetachFIP(fip.Status.ID)
+	err = r.osClient.DetachFIP(fip.Status.ID)
 	if err != nil {
 		return err
 	}
@@ -179,7 +179,6 @@ func (r *ReconcileFloatingIPAssociate) Reconcile(request reconcile.Request) (rec
 	var portID string
 	for _, iface := range node.Status.Addresses {
 		if iface.Type == v1.NodeInternalIP {
-			r.osClient, err = openstack.NewClient()
 			if err != nil {
 				return reconcile.Result{}, err
 			}
@@ -207,10 +206,6 @@ func (r *ReconcileFloatingIPAssociate) Reconcile(request reconcile.Request) (rec
 				return reconcile.Result{}, errors.Errorf("FloatingIP %s already attached port %s", fip.Status.FloatingIP, fip.Status.PortID)
 			}
 		} else {
-			r.osClient, err = openstack.NewClient()
-			if err != nil {
-				return reconcile.Result{}, err
-			}
 			err := r.osClient.AttachFIP(fip.Status.ID, portID)
 			if err != nil {
 				log.Info("failed to attach Floating IP")

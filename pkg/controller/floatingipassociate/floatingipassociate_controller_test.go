@@ -17,13 +17,19 @@ limitations under the License.
 package floatingipassociate
 
 import (
+	"github.com/golang/mock/gomock"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/extensions/layer3/floatingips"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/ports"
+	"github.com/takaishi/openstack-fip-controller/mock"
+	"github.com/takaishi/openstack-fip-controller/pkg/openstack"
+	"k8s.io/api/core/v1"
 	"testing"
 	"time"
 
 	"github.com/onsi/gomega"
 	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/pkg/apis/openstack/v1beta1"
 	"golang.org/x/net/context"
-	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -35,13 +41,65 @@ import (
 var c client.Client
 
 var expectedRequest = reconcile.Request{NamespacedName: types.NamespacedName{Name: "foo", Namespace: "default"}}
-var depKey = types.NamespacedName{Name: "foo-deployment", Namespace: "default"}
+var depKey = types.NamespacedName{Name: "foo", Namespace: "default"}
 
 const timeout = time.Second * 5
 
+func newOpenStackClientMock(controller *gomock.Controller) openstack.OpenStackClientInterface {
+	fip := floatingips.FloatingIP{ID: "aaaa", FloatingIP: "127.0.0.1"}
+	server := servers.Server{ID: "server"}
+	port := ports.Port{ID: "port"}
+	osClient := mock_openstack.NewMockOpenStackClientInterface(controller)
+
+	osClient.EXPECT().GetServer("server").Return(&server, nil).Times(2)
+	osClient.EXPECT().FindPortByServer(server).Return(&port, nil).Times(2)
+	osClient.EXPECT().AttachFIP("aaaa", "port").Return(nil)
+	osClient.EXPECT().DetachFIP("aaaa").Return(nil)
+	osClient.EXPECT().GetFIP("aaaa").Return(&fip, nil)
+
+	return osClient
+}
+
 func TestReconcile(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
-	instance := &openstackv1beta1.FloatingIPAssociate{ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"}}
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node-foo",
+		},
+		Status: v1.NodeStatus{
+			Addresses: []v1.NodeAddress{
+				{
+					Type:    v1.NodeInternalIP,
+					Address: "127.0.0.1",
+				},
+			},
+			NodeInfo: v1.NodeSystemInfo{
+				SystemUUID: "server",
+			},
+		},
+	}
+	instance := &openstackv1beta1.FloatingIPAssociate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "foo",
+			Namespace: "default",
+		},
+		Spec: openstackv1beta1.FloatingIPAssociateSpec{
+			Node:       "node-foo",
+			FloatingIP: "floatingip-foo",
+		},
+	}
+	fip := &openstackv1beta1.FloatingIP{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "floatingip-foo",
+			Namespace: "default",
+		},
+		Spec: openstackv1beta1.FloatingIPSpec{
+			Network: "test-network",
+		},
+		Status: openstackv1beta1.FloatingIPStatus{
+			ID: "aaaa",
+		},
+	}
 
 	// Setup the Manager and Controller.  Wrap the Controller Reconcile function so it writes each request to a
 	// channel when it is finished.
@@ -49,7 +107,12 @@ func TestReconcile(t *testing.T) {
 	g.Expect(err).NotTo(gomega.HaveOccurred())
 	c = mgr.GetClient()
 
-	recFn, requests := SetupTestReconcile(newReconciler(mgr))
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	osClient := newOpenStackClientMock(mockCtrl)
+
+	recFn, requests := SetupTestReconcile(&ReconcileFloatingIPAssociate{Client: mgr.GetClient(), scheme: mgr.GetScheme(), osClient: osClient})
 	g.Expect(add(mgr, recFn)).NotTo(gomega.HaveOccurred())
 
 	stopMgr, mgrStopped := StartTestManager(mgr, g)
@@ -59,6 +122,27 @@ func TestReconcile(t *testing.T) {
 		mgrStopped.Wait()
 	}()
 
+	err = c.Create(context.TODO(), node)
+	if apierrors.IsInvalid(err) {
+		t.Logf("failed to create object, got an invalid object error: %v", err)
+		return
+	}
+
+	err = c.Create(context.TODO(), fip)
+	// The instance object may not be a valid object because it might be missing some required fields.
+	// Please modify the instance object by adding required fields and then remove the following if statement.
+	if apierrors.IsInvalid(err) {
+		t.Logf("failed to create object, got an invalid object error: %v", err)
+		return
+	}
+	err = c.Status().Update(context.TODO(), fip)
+	// The instance object may not be a valid object because it might be missing some required fields.
+	// Please modify the instance object by adding required fields and then remove the following if statement.
+	if apierrors.IsInvalid(err) {
+		t.Logf("failed to create object, got an invalid object error: %v", err)
+		return
+	}
+
 	// Create the FloatingIPAssociate object and expect the Reconcile and Deployment to be created
 	err = c.Create(context.TODO(), instance)
 	// The instance object may not be a valid object because it might be missing some required fields.
@@ -67,11 +151,12 @@ func TestReconcile(t *testing.T) {
 		t.Logf("failed to create object, got an invalid object error: %v", err)
 		return
 	}
+
 	g.Expect(err).NotTo(gomega.HaveOccurred())
 	defer c.Delete(context.TODO(), instance)
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
 
-	deploy := &appsv1.Deployment{}
+	deploy := &openstackv1beta1.FloatingIPAssociate{}
 	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
 		Should(gomega.Succeed())
 
@@ -83,6 +168,6 @@ func TestReconcile(t *testing.T) {
 
 	// Manually delete Deployment since GC isn't enabled in the test control plane
 	g.Eventually(func() error { return c.Delete(context.TODO(), deploy) }, timeout).
-		Should(gomega.MatchError("deployments.apps \"foo-deployment\" not found"))
+		Should(gomega.MatchError("floatingipassociates.openstack.repl.info \"foo\" not found"))
 
 }
