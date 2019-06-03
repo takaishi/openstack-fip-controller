@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
@@ -172,8 +173,13 @@ func (r *ReconcileFloatingIPSet) Reconcile(request reconcile.Request) (reconcile
 	}
 
 	nodes := v1.NodeList{}
+	ls, err := convertLabelSelectorToLabelsSelector(labelSelector(&instance))
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
 	listOpts := client.ListOptions{
-		Raw: &metav1.ListOptions{LabelSelector: labelSelector(&instance)},
+		LabelSelector: ls,
 	}
 	err = r.List(ctx, &listOpts, &nodes)
 	if err != nil {
@@ -337,6 +343,14 @@ func labelSelector(set *openstackv1beta1.FloatingIPSet) string {
 	return strings.Join(labelSelector, ",")
 }
 
+func convertLabelSelectorToLabelsSelector(selector string) (labels.Selector, error) {
+	s, err := metav1.ParseToLabelSelector(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	return metav1.LabelSelectorAsSelector(s)
+}
 func containsString(slice []string, s string) bool {
 	for _, item := range slice {
 		if item == s {
