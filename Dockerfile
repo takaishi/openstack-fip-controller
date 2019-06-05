@@ -11,6 +11,7 @@ COPY vendor/ vendor/
 ENV GO111MODULE on
 
 # Build
+RUN go get github.com/takaishi/openstack-fip-controller/cmd/manager
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager github.com/takaishi/openstack-fip-controller/cmd/manager
 
 # Copy the controller-manager into a thin image
