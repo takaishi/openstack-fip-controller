@@ -41,16 +41,6 @@ spec:
           - network
           type: object
         status:
-          properties:
-            nodes:
-              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                of cluster Important: Run "make" to regenerate code after modifying
-                this file'
-              items:
-                type: string
-              type: array
-          required:
-          - nodes
           type: object
   version: v1beta1
 status:
