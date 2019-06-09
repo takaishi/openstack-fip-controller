@@ -177,8 +177,6 @@ func TestReconcile(t *testing.T) {
 	// Delete the FloatingIPAssociate and expect Reconcile to be called for FloatingIPAssociate deletion
 	g.Expect(c.Delete(context.TODO(), fipAssociate)).NotTo(gomega.HaveOccurred())
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
-	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
-		Should(gomega.Succeed())
 
 	// Manually delete Deployment since GC isn't enabled in the test control plane
 	g.Eventually(func() error { return c.Delete(context.TODO(), fipAssociate) }, timeout).
