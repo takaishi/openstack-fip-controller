@@ -60,7 +60,7 @@ func newOpenStackClientMock(controller *gomock.Controller) openstack.OpenStackCl
 	return osClient
 }
 
-func newNode() *v1.Node {
+func newNodeParam() *v1.Node {
 	return &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "node-foo",
@@ -79,7 +79,7 @@ func newNode() *v1.Node {
 	}
 }
 
-func newFloatingIP() *openstackv1beta1.FloatingIP {
+func newFloatingIPParam() *openstackv1beta1.FloatingIP {
 	return &openstackv1beta1.FloatingIP{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "floatingip-foo",
@@ -94,7 +94,7 @@ func newFloatingIP() *openstackv1beta1.FloatingIP {
 	}
 }
 
-func newFloatingIPAssociate() *openstackv1beta1.FloatingIPAssociate {
+func newFloatingIPAssociateParam() *openstackv1beta1.FloatingIPAssociate {
 	return &openstackv1beta1.FloatingIPAssociate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "foo",
@@ -110,9 +110,9 @@ func newFloatingIPAssociate() *openstackv1beta1.FloatingIPAssociate {
 func TestReconcile(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 
-	node := newNode()
-	fip := newFloatingIP()
-	fipAssociate := newFloatingIPAssociate()
+	nodeParam := newNodeParam()
+	fipParam := newFloatingIPParam()
+	fipAssociateParam := newFloatingIPAssociateParam()
 
 	// Setup the Manager and Controller.  Wrap the Controller Reconcile function so it writes each request to a
 	// channel when it is finished.
@@ -137,20 +137,20 @@ func TestReconcile(t *testing.T) {
 	}()
 
 	// Setup the object required by FloatingIPAssociate.
-	err = c.Create(context.TODO(), node)
+	err = c.Create(context.TODO(), nodeParam)
 	if apierrors.IsInvalid(err) {
 		t.Logf("failed to create objecti (Node), got an invalid object error: %v", err)
 		return
 	}
 
 	// Setup the object required by FloatingIPAssociate.
-	err = c.Create(context.TODO(), fip)
+	err = c.Create(context.TODO(), fipParam)
 	if apierrors.IsInvalid(err) {
 		t.Logf("failed to create object (FloatingIP), got an invalid object error: %v", err)
 		return
 	}
 
-	err = c.Status().Update(context.TODO(), fip)
+	err = c.Status().Update(context.TODO(), fipParam)
 	if apierrors.IsInvalid(err) {
 		t.Logf("failed to update object (FloatingIP), got an invalid object error: %v", err)
 		return
@@ -169,18 +169,19 @@ func TestReconcile(t *testing.T) {
 	defer c.Delete(context.TODO(), fipAssociateParam)
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
 
-	deploy := &openstackv1beta1.FloatingIPAssociate{}
-	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
+	// Check FloatingIPAssociate object was created.
+	fipAssociate := &openstackv1beta1.FloatingIPAssociate{}
+	g.Eventually(func() error { return c.Get(context.TODO(), depKey, fipAssociate) }, timeout).
 		Should(gomega.Succeed())
 
 	// Delete the FloatingIPAssociate and expect Reconcile to be called for FloatingIPAssociate deletion
-	g.Expect(c.Delete(context.TODO(), deploy)).NotTo(gomega.HaveOccurred())
+	g.Expect(c.Delete(context.TODO(), fipAssociate)).NotTo(gomega.HaveOccurred())
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
 	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
 		Should(gomega.Succeed())
 
 	// Manually delete Deployment since GC isn't enabled in the test control plane
-	g.Eventually(func() error { return c.Delete(context.TODO(), deploy) }, timeout).
+	g.Eventually(func() error { return c.Delete(context.TODO(), fipAssociate) }, timeout).
 		Should(gomega.MatchError("floatingipassociates.openstack.repl.info \"foo\" not found"))
 
-}
+	}
