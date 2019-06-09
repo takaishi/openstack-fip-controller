@@ -60,9 +60,8 @@ func newOpenStackClientMock(controller *gomock.Controller) openstack.OpenStackCl
 	return osClient
 }
 
-func TestReconcile(t *testing.T) {
-	g := gomega.NewGomegaWithT(t)
-	node := &v1.Node{
+func newNode() *v1.Node {
+	return &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "node-foo",
 		},
@@ -78,17 +77,10 @@ func TestReconcile(t *testing.T) {
 			},
 		},
 	}
-	instance := &openstackv1beta1.FloatingIPAssociate{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foo",
-			Namespace: "default",
-		},
-		Spec: openstackv1beta1.FloatingIPAssociateSpec{
-			Node:       "node-foo",
-			FloatingIP: "floatingip-foo",
-		},
-	}
-	fip := &openstackv1beta1.FloatingIP{
+}
+
+func newFloatingIP() *openstackv1beta1.FloatingIP {
+	return &openstackv1beta1.FloatingIP{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "floatingip-foo",
 			Namespace: "default",
@@ -100,6 +92,27 @@ func TestReconcile(t *testing.T) {
 			ID: "aaaa",
 		},
 	}
+}
+
+func newFloatingIPAssociate() *openstackv1beta1.FloatingIPAssociate {
+	return &openstackv1beta1.FloatingIPAssociate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "foo",
+			Namespace: "default",
+		},
+		Spec: openstackv1beta1.FloatingIPAssociateSpec{
+			Node:       "node-foo",
+			FloatingIP: "floatingip-foo",
+		},
+	}
+}
+
+func TestReconcile(t *testing.T) {
+	g := gomega.NewGomegaWithT(t)
+
+	node := newNode()
+	fip := newFloatingIP()
+	fipAssociate := newFloatingIPAssociate()
 
 	// Setup the Manager and Controller.  Wrap the Controller Reconcile function so it writes each request to a
 	// channel when it is finished.
@@ -110,6 +123,7 @@ func TestReconcile(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
+	// Setup the OpenStack client. Client is mock.
 	osClient := newOpenStackClientMock(mockCtrl)
 
 	recFn, requests := SetupTestReconcile(&ReconcileFloatingIPAssociate{Client: mgr.GetClient(), scheme: mgr.GetScheme(), osClient: osClient})
@@ -122,45 +136,44 @@ func TestReconcile(t *testing.T) {
 		mgrStopped.Wait()
 	}()
 
+	// Setup the object required by FloatingIPAssociate.
 	err = c.Create(context.TODO(), node)
 	if apierrors.IsInvalid(err) {
-		t.Logf("failed to create object, got an invalid object error: %v", err)
+		t.Logf("failed to create objecti (Node), got an invalid object error: %v", err)
 		return
 	}
 
+	// Setup the object required by FloatingIPAssociate.
 	err = c.Create(context.TODO(), fip)
-	// The instance object may not be a valid object because it might be missing some required fields.
-	// Please modify the instance object by adding required fields and then remove the following if statement.
 	if apierrors.IsInvalid(err) {
-		t.Logf("failed to create object, got an invalid object error: %v", err)
-		return
-	}
-	err = c.Status().Update(context.TODO(), fip)
-	// The instance object may not be a valid object because it might be missing some required fields.
-	// Please modify the instance object by adding required fields and then remove the following if statement.
-	if apierrors.IsInvalid(err) {
-		t.Logf("failed to create object, got an invalid object error: %v", err)
+		t.Logf("failed to create object (FloatingIP), got an invalid object error: %v", err)
 		return
 	}
 
-	// Create the FloatingIPAssociate object and expect the Reconcile and Deployment to be created
-	err = c.Create(context.TODO(), instance)
-	// The instance object may not be a valid object because it might be missing some required fields.
-	// Please modify the instance object by adding required fields and then remove the following if statement.
+	err = c.Status().Update(context.TODO(), fip)
 	if apierrors.IsInvalid(err) {
-		t.Logf("failed to create object, got an invalid object error: %v", err)
+		t.Logf("failed to update object (FloatingIP), got an invalid object error: %v", err)
+		return
+	}
+
+	// >> Start Test
+
+	// Create the FloatingIPAssociate object and expect the Reconcile and to called OpenStack API.
+	err = c.Create(context.TODO(), fipAssociate)
+	if apierrors.IsInvalid(err) {
+		t.Logf("failed to create object (FloatingIPAssociate), got an invalid object error: %v", err)
 		return
 	}
 
 	g.Expect(err).NotTo(gomega.HaveOccurred())
-	defer c.Delete(context.TODO(), instance)
+	defer c.Delete(context.TODO(), fipAssociate)
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
 
 	deploy := &openstackv1beta1.FloatingIPAssociate{}
 	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
 		Should(gomega.Succeed())
 
-	// Delete the Deployment and expect Reconcile to be called for Deployment deletion
+	// Delete the FloatingIPAssociate and expect Reconcile to be called for FloatingIPAssociate deletion
 	g.Expect(c.Delete(context.TODO(), deploy)).NotTo(gomega.HaveOccurred())
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
 	g.Eventually(func() error { return c.Get(context.TODO(), depKey, deploy) }, timeout).
