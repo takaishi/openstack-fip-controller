@@ -159,14 +159,14 @@ func TestReconcile(t *testing.T) {
 	// >> Start Test
 
 	// Create the FloatingIPAssociate object and expect the Reconcile and to called OpenStack API.
-	err = c.Create(context.TODO(), fipAssociate)
+	err = c.Create(context.TODO(), fipAssociateParam)
 	if apierrors.IsInvalid(err) {
 		t.Logf("failed to create object (FloatingIPAssociate), got an invalid object error: %v", err)
 		return
 	}
 
 	g.Expect(err).NotTo(gomega.HaveOccurred())
-	defer c.Delete(context.TODO(), fipAssociate)
+	defer c.Delete(context.TODO(), fipAssociateParam)
 	g.Eventually(requests, timeout).Should(gomega.Receive(gomega.Equal(expectedRequest)))
 
 	deploy := &openstackv1beta1.FloatingIPAssociate{}
