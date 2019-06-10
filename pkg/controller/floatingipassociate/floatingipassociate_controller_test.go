@@ -38,6 +38,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const (
+	FloatingIPAddress = "127.0.0.1"
+	FloatingIPID      = "03bf39a9-e381-4141-9a1a-3c48aa75348c"
+	PortID            = "683b5ff0-d930-4f26-b677-43d3eaaa6035"
+	ServerID          = "e6871058-54ca-4d4d-aad7-be81fdeeffdc"
+)
+
 var c client.Client
 
 var expectedRequest = reconcile.Request{NamespacedName: types.NamespacedName{Name: "foo", Namespace: "default"}}
@@ -46,16 +53,16 @@ var depKey = types.NamespacedName{Name: "foo", Namespace: "default"}
 const timeout = time.Second * 5
 
 func newOpenStackClientMock(controller *gomock.Controller) openstack.OpenStackClientInterface {
-	fip := floatingips.FloatingIP{ID: "aaaa", FloatingIP: "127.0.0.1"}
-	server := servers.Server{ID: "server"}
-	port := ports.Port{ID: "port"}
+	fip := floatingips.FloatingIP{ID: FloatingIPID, FloatingIP: FloatingIPAddress}
+	server := servers.Server{ID: ServerID}
+	port := ports.Port{ID: PortID}
 	osClient := mock_openstack.NewMockOpenStackClientInterface(controller)
 
-	osClient.EXPECT().GetServer("server").Return(&server, nil).Times(2)
+	osClient.EXPECT().GetServer(ServerID).Return(&server, nil).Times(2)
 	osClient.EXPECT().FindPortByServer(server).Return(&port, nil).Times(2)
-	osClient.EXPECT().AttachFIP("aaaa", "port").Return(nil)
-	osClient.EXPECT().DetachFIP("aaaa").Return(nil)
-	osClient.EXPECT().GetFIP("aaaa").Return(&fip, nil)
+	osClient.EXPECT().AttachFIP(FloatingIPID, PortID).Return(nil)
+	osClient.EXPECT().DetachFIP(FloatingIPID).Return(nil)
+	osClient.EXPECT().GetFIP(FloatingIPID).Return(&fip, nil)
 
 	return osClient
 }
@@ -69,11 +76,11 @@ func newNodeParam() *v1.Node {
 			Addresses: []v1.NodeAddress{
 				{
 					Type:    v1.NodeInternalIP,
-					Address: "127.0.0.1",
+					Address: FloatingIPAddress,
 				},
 			},
 			NodeInfo: v1.NodeSystemInfo{
-				SystemUUID: "server",
+				SystemUUID: ServerID,
 			},
 		},
 	}
@@ -89,7 +96,7 @@ func newFloatingIPParam() *openstackv1beta1.FloatingIP {
 			Network: "test-network",
 		},
 		Status: openstackv1beta1.FloatingIPStatus{
-			ID: "aaaa",
+			ID: FloatingIPID,
 		},
 	}
 }
@@ -182,4 +189,4 @@ func TestReconcile(t *testing.T) {
 	g.Eventually(func() error { return c.Delete(context.TODO(), fipAssociate) }, timeout).
 		Should(gomega.MatchError("floatingipassociates.openstack.repl.info \"foo\" not found"))
 
-	}
+}
