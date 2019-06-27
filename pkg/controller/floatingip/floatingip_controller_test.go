@@ -56,7 +56,10 @@ func newOpenStackClientMock(controller *gomock.Controller) openstack.OpenStackCl
 func TestReconcile(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
 	instance := &openstackv1beta1.FloatingIP{
-		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{
+			SelfLink:  "/api/version/pods/foo",
+			Name: "foo", Namespace: "default",
+		UID: "bar"},
 		Spec: openstackv1beta1.FloatingIPSpec{
 			Network: "test-network",
 		},
@@ -73,7 +76,12 @@ func TestReconcile(t *testing.T) {
 
 	osClient := newOpenStackClientMock(mockCtrl)
 
-	recFn, requests := SetupTestReconcile(&ReconcileFloatingIP{Client: mgr.GetClient(), scheme: mgr.GetScheme(), osClient: osClient})
+	recFn, requests := SetupTestReconcile(&ReconcileFloatingIP{
+		Client: mgr.GetClient(),
+		scheme: mgr.GetScheme(),
+		osClient: osClient,
+		recorder: mgr.GetRecorder("floatingip-controller"),
+	})
 	g.Expect(add(mgr, recFn)).NotTo(gomega.HaveOccurred())
 
 	stopMgr, mgrStopped := StartTestManager(mgr, g)

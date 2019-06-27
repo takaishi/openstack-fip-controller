@@ -18,12 +18,15 @@ package floatingip
 
 import (
 	"context"
+	"fmt"
 	"github.com/gophercloud/gophercloud"
 	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/pkg/apis/openstack/v1beta1"
 	"github.com/takaishi/openstack-fip-controller/pkg/openstack"
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -54,7 +57,12 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager, osClient openstack.OpenStackClientInterface) reconcile.Reconciler {
-	return &ReconcileFloatingIP{Client: mgr.GetClient(), scheme: mgr.GetScheme(), osClient: osClient}
+	return &ReconcileFloatingIP{
+		Client:   mgr.GetClient(),
+		scheme:   mgr.GetScheme(),
+		osClient: osClient,
+		recorder: mgr.GetRecorder("floatingip-controller"),
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -91,6 +99,7 @@ type ReconcileFloatingIP struct {
 	client.Client
 	scheme   *runtime.Scheme
 	osClient openstack.OpenStackClientInterface
+	recorder record.EventRecorder
 }
 
 func (r *ReconcileFloatingIP) deleteExternalDependency(instance *openstackv1beta1.FloatingIP) error {
@@ -119,6 +128,7 @@ func (r *ReconcileFloatingIP) deleteExternalDependency(instance *openstackv1beta
 // +kubebuilder:rbac:groups=openstack.repl.info,resources=floatingips,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openstack.repl.info,resources=floatingips/status,verbs=get;update;patch
 func (r *ReconcileFloatingIP) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+
 	ctx := context.Background()
 
 	// Fetch the FloatingIP instance
@@ -149,6 +159,7 @@ func (r *ReconcileFloatingIP) Reconcile(request reconcile.Request) (reconcile.Re
 			return reconcile.Result{}, err
 		}
 		log.Info("Created Floating IP", "ID", fip.ID, "FloatingIP", fip.FloatingIP)
+		r.NormalEvent(&instance, "test", "Created FloatingIP %s (%s)", fip.FloatingIP, fip.ID)
 		instance.Status.ID = fip.ID
 		instance.Status.FloatingIP = fip.FloatingIP
 	}
@@ -185,6 +196,21 @@ func (r *ReconcileFloatingIP) runFinalizer(fip *openstackv1beta1.FloatingIP) (re
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileFloatingIP) NormalEvent(fip *openstackv1beta1.FloatingIP, reason string, messageFmt string, args ...interface{}) {
+
+	fmt.Printf("%+v\n", fip)
+	fmt.Printf("%+v\n", v1.EventTypeNormal)
+	fmt.Printf("%+v\n", reason)
+	fmt.Printf("%+v\n",  messageFmt)
+	fmt.Printf("%+v\n",  args)
+	fmt.Printf("%+v\n",  r.recorder)
+	r.recorder.Eventf(fip, v1.EventTypeNormal, reason, messageFmt, args...)
+}
+
+func (r *ReconcileFloatingIP) WarningEvent(fip *openstackv1beta1.FloatingIP, reason string, messageFmt string, args ...interface{}) {
+	r.recorder.Eventf(fip, v1.EventTypeWarning, reason, messageFmt, args...)
 }
 
 func containsString(slice []string, s string) bool {
