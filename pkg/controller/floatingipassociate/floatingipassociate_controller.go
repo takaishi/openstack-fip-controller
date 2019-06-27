@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -60,7 +61,12 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager, osClient openstack.OpenStackClientInterface) reconcile.Reconciler {
-	return &ReconcileFloatingIPAssociate{Client: mgr.GetClient(), scheme: mgr.GetScheme(), osClient: osClient}
+	return &ReconcileFloatingIPAssociate{
+		Client:   mgr.GetClient(),
+		scheme:   mgr.GetScheme(),
+		osClient: osClient,
+		recorder: mgr.GetRecorder("floatingipassociate-controller"),
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -97,6 +103,7 @@ type ReconcileFloatingIPAssociate struct {
 	client.Client
 	scheme   *runtime.Scheme
 	osClient openstack.OpenStackClientInterface
+	recorder record.EventRecorder
 }
 
 func (r *ReconcileFloatingIPAssociate) deleteExternalDependency(instance *openstackv1beta1.FloatingIPAssociate, request reconcile.Request) error {
@@ -203,14 +210,19 @@ func (r *ReconcileFloatingIPAssociate) Reconcile(request reconcile.Request) (rec
 		if fip.Status.PortID != "" {
 			if fip.Status.PortID != portID {
 				log.Info("FloatingIP already attached another port", "floatingIP", fip.Status.FloatingIP, "portID", fip.Status.PortID)
+				r.WarningEvent(&instance, "info", "FloatingIP %s already attached another port %s", fip.Status.FloatingIP, fip.Status.PortID)
+
 				return reconcile.Result{}, errors.Errorf("FloatingIP %s already attached port %s", fip.Status.FloatingIP, fip.Status.PortID)
 			}
 		} else {
+			r.NormalEvent(&instance, "info", "Attaching FloatingIP %s(%s) to port %s", fip.Status.FloatingIP, fip.Status.ID, portID)
 			err := r.osClient.AttachFIP(fip.Status.ID, portID)
 			if err != nil {
 				log.Info("failed to attach Floating IP")
+				r.WarningEvent(&instance, "info", "Faled to attach FloatingIP %s(%s) to port %s", fip.Status.FloatingIP, fip.Status.ID, portID)
 				return reconcile.Result{}, err
 			}
+			r.NormalEvent(&instance, "info", "Attached FloatingIP %s(%s) to port %s", fip.Status.FloatingIP, fip.Status.ID, portID)
 			fip.Status.PortID = portID
 			if err := r.Status().Update(ctx, &fip); err != nil {
 				return reconcile.Result{}, err
@@ -245,6 +257,14 @@ func (r *ReconcileFloatingIPAssociate) runFinalizer(associate *openstackv1beta1.
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileFloatingIPAssociate) NormalEvent(fip *openstackv1beta1.FloatingIPAssociate, reason string, messageFmt string, args ...interface{}) {
+	r.recorder.Eventf(fip, v1.EventTypeNormal, reason, messageFmt, args...)
+}
+
+func (r *ReconcileFloatingIPAssociate) WarningEvent(fip *openstackv1beta1.FloatingIPAssociate, reason string, messageFmt string, args ...interface{}) {
+	r.recorder.Eventf(fip, v1.EventTypeWarning, reason, messageFmt, args...)
 }
 
 func containsString(slice []string, s string) bool {

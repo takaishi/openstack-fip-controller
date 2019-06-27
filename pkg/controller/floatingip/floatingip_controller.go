@@ -18,7 +18,6 @@ package floatingip
 
 import (
 	"context"
-	"fmt"
 	"github.com/gophercloud/gophercloud"
 	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/pkg/apis/openstack/v1beta1"
 	"github.com/takaishi/openstack-fip-controller/pkg/openstack"
@@ -154,12 +153,13 @@ func (r *ReconcileFloatingIP) Reconcile(request reconcile.Request) (reconcile.Re
 
 	if instance.Status.ID == "" {
 		log.Info("Creating Floating IP...", "network", instance.Spec.Network)
+		r.NormalEvent(&instance, "info", "Creating FloatingIP to network %s ...", instance.Spec.Network)
 		fip, err := r.osClient.CreateFIP(instance.Spec.Network)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 		log.Info("Created Floating IP", "ID", fip.ID, "FloatingIP", fip.FloatingIP)
-		r.NormalEvent(&instance, "test", "Created FloatingIP %s (%s)", fip.FloatingIP, fip.ID)
+		r.NormalEvent(&instance, "info", "Created FloatingIP %s (%s)", fip.FloatingIP, fip.ID)
 		instance.Status.ID = fip.ID
 		instance.Status.FloatingIP = fip.FloatingIP
 	}
@@ -199,13 +199,6 @@ func (r *ReconcileFloatingIP) runFinalizer(fip *openstackv1beta1.FloatingIP) (re
 }
 
 func (r *ReconcileFloatingIP) NormalEvent(fip *openstackv1beta1.FloatingIP, reason string, messageFmt string, args ...interface{}) {
-
-	fmt.Printf("%+v\n", fip)
-	fmt.Printf("%+v\n", v1.EventTypeNormal)
-	fmt.Printf("%+v\n", reason)
-	fmt.Printf("%+v\n",  messageFmt)
-	fmt.Printf("%+v\n",  args)
-	fmt.Printf("%+v\n",  r.recorder)
 	r.recorder.Eventf(fip, v1.EventTypeNormal, reason, messageFmt, args...)
 }
 

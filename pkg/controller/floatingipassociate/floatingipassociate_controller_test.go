@@ -133,7 +133,12 @@ func TestReconcile(t *testing.T) {
 	// Setup the OpenStack client. Client is mock.
 	osClient := newOpenStackClientMock(mockCtrl)
 
-	recFn, requests := SetupTestReconcile(&ReconcileFloatingIPAssociate{Client: mgr.GetClient(), scheme: mgr.GetScheme(), osClient: osClient})
+	recFn, requests := SetupTestReconcile(&ReconcileFloatingIPAssociate{
+		Client:   mgr.GetClient(),
+		scheme:   mgr.GetScheme(),
+		osClient: osClient,
+		recorder: mgr.GetRecorder("floatingipassociate-controller"),
+	})
 	g.Expect(add(mgr, recFn)).NotTo(gomega.HaveOccurred())
 
 	stopMgr, mgrStopped := StartTestManager(mgr, g)
