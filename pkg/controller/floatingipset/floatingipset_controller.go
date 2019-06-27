@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/record"
 	"math/rand"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
@@ -64,7 +65,11 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileFloatingIPSet{Client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	return &ReconcileFloatingIPSet{
+		Client:   mgr.GetClient(),
+		scheme:   mgr.GetScheme(),
+		recorder: mgr.GetRecorder("floatingipassociate-controller"),
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -99,7 +104,8 @@ var _ reconcile.Reconciler = &ReconcileFloatingIPSet{}
 // ReconcileFloatingIPSet reconciles a FloatingIPSet object
 type ReconcileFloatingIPSet struct {
 	client.Client
-	scheme *runtime.Scheme
+	scheme   *runtime.Scheme
+	recorder record.EventRecorder
 }
 
 func (r *ReconcileFloatingIPSet) deleteExternalDependency(instance *openstackv1beta1.FloatingIPSet, req reconcile.Request) error {
@@ -213,22 +219,25 @@ func (r *ReconcileFloatingIPSet) Reconcile(request reconcile.Request) (reconcile
 				}
 				return reconcile.Result{}, err
 			}
-
+			r.NormalEvent(&instance, "info", "Deleting FloatingIPAssociate %s", name)
 			log.Info("Deleting FloatingIPAssociate...", "Name", name)
 			if err := r.Delete(ctx, &associate); err != nil {
 				return reconcile.Result{}, err
 			}
 			log.Info("Deleted FloatingIPAssociate", "Name", name)
+			r.NormalEvent(&instance, "info", "Deleted FloatingIPAssociate %s", name)
 
 			var fip openstackv1beta1.FloatingIP
 			nn = types.NamespacedName{Namespace: request.Namespace, Name: associate.Spec.FloatingIP}
 			if err := r.Get(ctx, nn, &fip); err != nil {
 				return reconcile.Result{}, err
 			}
+			r.NormalEvent(&instance, "info", "Deleting FloatingIP %s", name)
 			log.Info("Deleting FloatingIP...", "Name", name)
 			if err := r.Delete(ctx, &fip); err != nil {
 				return reconcile.Result{}, err
 			}
+			r.NormalEvent(&instance, "info", "Deleted FloatingIP %s", name)
 			log.Info("Deleted FloatingIP", "Name", name)
 
 			instance.Status.Nodes = removeString(instance.Status.Nodes, name)
@@ -294,6 +303,7 @@ func (r *ReconcileFloatingIPSet) AttachFIPToNode(instance *openstackv1beta1.Floa
 			if err := r.Create(ctx, &fip); err != nil {
 				return err
 			}
+			r.NormalEvent(instance, "info", "Created FloatingIP %s", name)
 
 			associate.ObjectMeta = metav1.ObjectMeta{
 				Labels:      make(map[string]string),
@@ -306,6 +316,7 @@ func (r *ReconcileFloatingIPSet) AttachFIPToNode(instance *openstackv1beta1.Floa
 			if err := r.Create(ctx, &associate); err != nil {
 				return err
 			}
+			r.NormalEvent(instance, "info", "Created FloatingIPAssociate %s", node.Name)
 		} else {
 			return err
 		}
@@ -313,6 +324,14 @@ func (r *ReconcileFloatingIPSet) AttachFIPToNode(instance *openstackv1beta1.Floa
 	instance.Status.Nodes = append(instance.Status.Nodes, node.Name)
 
 	return nil
+}
+
+func (r *ReconcileFloatingIPSet) NormalEvent(fip *openstackv1beta1.FloatingIPSet, reason string, messageFmt string, args ...interface{}) {
+	r.recorder.Eventf(fip, v1.EventTypeNormal, reason, messageFmt, args...)
+}
+
+func (r *ReconcileFloatingIPSet) WarningEvent(fip *openstackv1beta1.FloatingIPSet, reason string, messageFmt string, args ...interface{}) {
+	r.recorder.Eventf(fip, v1.EventTypeWarning, reason, messageFmt, args...)
 }
 
 func kubeClient() (*kubernetes.Clientset, error) {
