@@ -89,6 +89,14 @@ rules:
   verbs:
   - create
 - apiGroups:
+  - ""
+  resources:
+  - node
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - apps
   resources:
   - deployments
