@@ -25,6 +25,12 @@ rules:
   - update
   - patch
 - apiGroups:
+  - ""
+  resources:
+  - event
+  verbs:
+  - create
+- apiGroups:
   - apps
   resources:
   - deployments
@@ -77,6 +83,20 @@ rules:
   - update
   - patch
 - apiGroups:
+  - ""
+  resources:
+  - event
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - node
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - apps
   resources:
   - deployments
@@ -117,6 +137,12 @@ rules:
   - update
   - patch
 - apiGroups:
+  - ""
+  resources:
+  - event
+  verbs:
+  - create
+- apiGroups:
   - admissionregistration.k8s.io
   resources:
   - mutatingwebhookconfigurations
@@ -153,11 +179,3 @@ rules:
   - update
   - patch
   - delete
-- apiGroups:
-  - ""
-  resources:
-  - nodes
-  verbs:
-  - get
-  - list
-  - watch
