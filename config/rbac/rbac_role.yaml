@@ -27,7 +27,7 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - event
+  - events
   verbs:
   - create
 - apiGroups:
@@ -85,13 +85,13 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - event
+  - events
   verbs:
   - create
 - apiGroups:
   - ""
   resources:
-  - node
+  - nodes
   verbs:
   - get
   - list
@@ -139,7 +139,7 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - event
+  - events
   verbs:
   - create
 - apiGroups:

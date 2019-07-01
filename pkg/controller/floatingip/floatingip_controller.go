@@ -126,7 +126,7 @@ func (r *ReconcileFloatingIP) deleteExternalDependency(instance *openstackv1beta
 // and what is in the FloatingIP.Spec
 // +kubebuilder:rbac:groups=openstack.repl.info,resources=floatingips,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openstack.repl.info,resources=floatingips/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=core,resources=event,verbs=create
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 func (r *ReconcileFloatingIP) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 
 	ctx := context.Background()

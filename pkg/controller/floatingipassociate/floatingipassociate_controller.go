@@ -153,8 +153,8 @@ func (r *ReconcileFloatingIPAssociate) deleteExternalDependency(instance *openst
 // +kubebuilder:rbac:groups=openstack.repl.info,resources=floatingips,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openstack.repl.info,resources=floatingipassociates,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openstack.repl.info,resources=floatingipassociates/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=core,resources=event,verbs=create
-// +kubebuilder:rbac:groups=core,resources=node,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
 func (r *ReconcileFloatingIPAssociate) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	ctx := context.Background()
 
