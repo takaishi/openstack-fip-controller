@@ -1,9 +1,0 @@
-apiVersion: openstack.repl.info/v1beta1
-kind: FloatingIP
-metadata:
-  labels:
-    controller-tools.k8s.io: "1.0"
-  name: floatingip-sample
-spec:
-  # Add fields here
-  foo: bar

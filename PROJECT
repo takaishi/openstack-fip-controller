@@ -1,3 +1,13 @@
-version: "1"
 domain: repl.info
-repo: github.com/takaishi/openstack-fip-controller
+repo: github.com/takaishi/openstack-fip-controller-v2
+resources:
+- group: openstack.repl.info
+  kind: FloatingIP
+  version: v1beta1
+- group: openstack.repl.info
+  kind: FloatingIPSet
+  version: v1beta1
+- group: openstack.repl.info
+  kind: FloatingIPAssociate
+  version: v1beta1
+version: "2"

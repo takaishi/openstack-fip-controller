@@ -1,0 +1,26 @@
+# permissions to do edit floatingips.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: floatingip-editor-role
+rules:
+- apiGroups:
+  - openstack.repl.info.repl.info
+  resources:
+  - floatingips
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - openstack.repl.info.repl.info
+  resources:
+  - floatingips/status
+  verbs:
+  - get
+  - patch
+  - update

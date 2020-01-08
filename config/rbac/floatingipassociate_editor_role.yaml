@@ -1,0 +1,26 @@
+# permissions to do edit floatingipassociates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: floatingipassociate-editor-role
+rules:
+- apiGroups:
+  - openstack.repl.info.repl.info
+  resources:
+  - floatingipassociates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - openstack.repl.info.repl.info
+  resources:
+  - floatingipassociates/status
+  verbs:
+  - get
+  - patch
+  - update

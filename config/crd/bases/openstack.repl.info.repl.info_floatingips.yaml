@@ -1,0 +1,68 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  creationTimestamp: null
+  name: floatingips.openstack.repl.info.repl.info
+spec:
+  group: openstack.repl.info.repl.info
+  names:
+    kind: FloatingIP
+    plural: floatingips
+  scope: ""
+  validation:
+    openAPIV3Schema:
+      description: FloatingIP is the Schema for the floatingips API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: FloatingIPSpec defines the desired state of FloatingIP
+          properties:
+            network:
+              description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                Important: Run "make" to regenerate code after modifying this file'
+              type: string
+          required:
+          - network
+          type: object
+        status:
+          description: FloatingIPStatus defines the observed state of FloatingIP
+          properties:
+            floating_ip:
+              type: string
+            id:
+              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                of cluster Important: Run "make" to regenerate code after modifying
+                this file'
+              type: string
+            port_id:
+              type: string
+          required:
+          - floating_ip
+          - id
+          - port_id
+          type: object
+      type: object
+  version: v1beta1
+  versions:
+  - name: v1beta1
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
