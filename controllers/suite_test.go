@@ -23,7 +23,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	openstackreplinfov1beta1 "github.com/takaishi/openstack-fip-controller-v2/api/v1beta1"
+	openstackreplinfov1beta1 "github.com/takaishi/openstack-fip-controller/api/v1beta1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"

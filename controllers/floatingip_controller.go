@@ -19,7 +19,7 @@ package controllers
 import (
 	"context"
 	"github.com/gophercloud/gophercloud"
-	"github.com/takaishi/openstack-fip-controller-v2/openstack"
+	"github.com/takaishi/openstack-fip-controller/openstack"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/record"
@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
-	openstackv1beta1 "github.com/takaishi/openstack-fip-controller-v2/api/v1beta1"
+	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/api/v1beta1"
 )
 
 var log = logf.Log.WithName("controller")

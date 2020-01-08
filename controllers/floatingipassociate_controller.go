@@ -20,7 +20,7 @@ import (
 	"context"
 	"github.com/gophercloud/gophercloud"
 	"github.com/pkg/errors"
-	"github.com/takaishi/openstack-fip-controller-v2/openstack"
+	"github.com/takaishi/openstack-fip-controller/openstack"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -34,7 +34,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	openstackv1beta1 "github.com/takaishi/openstack-fip-controller-v2/api/v1beta1"
+	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/api/v1beta1"
 )
 
 var floatingipassociateFinalizerName = "finalizer.floatingipassociate.openstack.repl.info"

@@ -39,7 +39,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	openstackv1beta1 "github.com/takaishi/openstack-fip-controller-v2/api/v1beta1"
+	openstackv1beta1 "github.com/takaishi/openstack-fip-controller/api/v1beta1"
 )
 
 var floatingipsetFinalizerName = "finalizer.floatingipset.openstack.repl.info"

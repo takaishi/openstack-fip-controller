@@ -20,8 +20,8 @@ import (
 	"flag"
 	"os"
 
-	openstackreplinfov1beta1 "github.com/takaishi/openstack-fip-controller-v2/api/v1beta1"
-	"github.com/takaishi/openstack-fip-controller-v2/controllers"
+	openstackreplinfov1beta1 "github.com/takaishi/openstack-fip-controller/api/v1beta1"
+	"github.com/takaishi/openstack-fip-controller/controllers"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"

@@ -1,5 +1,5 @@
 domain: repl.info
-repo: github.com/takaishi/openstack-fip-controller-v2
+repo: github.com/takaishi/openstack-fip-controller
 resources:
 - group: openstack.repl.info
   kind: FloatingIP
